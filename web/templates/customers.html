@@ -13,12 +13,12 @@
 
 <header class="topbar">
   <div class="topbar-inner">
-    <a href="{{ url_for('index') }}" class="brand">
+    <a href="{{ url_for('dashboard') }}" class="brand">
       <span class="brand-mark"></span>
       <div class="brand-title">ANYAH &amp; CO.</div>
     </a>
     <nav>
-      <a href="{{ url_for('index') }}" class="nav-link">Generate</a>
+      <a href="{{ url_for('gstr1_page') }}" class="nav-link">Generate</a>
       <a href="{{ url_for('firms_page') }}" class="nav-link">Firms</a>
       <a href="{{ url_for('customers_page') }}" class="nav-link active">Customers</a>
       <a href="{{ url_for('files_page') }}" class="nav-link">Files</a>
@@ -70,7 +70,7 @@
     {% else %}
       <div class="empty-state">
         <p>No customers cached yet.</p>
-        <p style="margin-top:8px;font-size:13px;color:var(--ink-3);">Process a sales sheet on the <a href="{{ url_for('index') }}">Generate page</a> and customer GSTINs will appear here automatically.</p>
+        <p style="margin-top:8px;font-size:13px;color:var(--ink-3);">Process a sales sheet on the <a href="{{ url_for('gstr1_page') }}">Generate page</a> and customer GSTINs will appear here automatically.</p>
       </div>
     {% endif %}
 
