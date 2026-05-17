@@ -29,16 +29,35 @@ class FirmStore:
         return resp.data or []
 
     def get(self, firm_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Look up by GSTIN (which is what app.py passes as 'firm_id').
-        Returns the full row including the UUID `id`, or None.
-        """
-        if not firm_id:
-            return None
-        key = firm_id.strip().upper()
-        resp = (self._client.table("firms")
-                .select("*").eq("gstin", key).limit(1).execute())
-        return resp.data[0] if resp.data else None
+    """
+    Look up a firm by either its GSTIN (15 chars) or its UUID id
+    (36 chars with hyphens). Returns the full row or None.
+    """
+    if not firm_id:
+        return None
+    key = firm_id.strip()
+
+    # UUID lookup (36 chars, contains 4 hyphens)
+    if len(key) == 36 and key.count("-") == 4:
+        try:
+            resp = (self._client.table("firms").select("*")
+                    .eq("id", key).limit(1).execute())
+            if resp.data:
+                return resp.data[0]
+        except Exception:
+            pass
+
+    # GSTIN lookup (15 chars, uppercase)
+    if len(key) == 15:
+        try:
+            resp = (self._client.table("firms").select("*")
+                    .eq("gstin", key.upper()).limit(1).execute())
+            if resp.data:
+                return resp.data[0]
+        except Exception:
+            pass
+
+    return None
 
     # Alias kept for any older code that uses get_firm()
     def get_firm(self, firm_id: str) -> Optional[Dict[str, Any]]:
