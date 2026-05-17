@@ -29,6 +29,8 @@ from preflight import run_all_preflight_checks
 from gstr2b_reader import parse_gstr2b
 from gstr3b_compute import compute_gstr3b
 from gstr3b_excel_writer import write_gstr3b_excel
+from project_store import ProjectStore, KIND_LABELS
+import io
 
 from firm_store import FirmStore
 from period_utils import normalize_period, period_to_label, period_bounds
@@ -68,6 +70,7 @@ for d in (UPLOAD_DIR, OUTPUT_DIR, DATA_DIR):
 
 firms = FirmStore(DATA_DIR / "firms.json")
 customers = CustomerStore(DATA_DIR / "customers.json")
+projects = ProjectStore()
 batch_cache = BatchStateCache(ttl_seconds=3600)
 ALLOWED_EXT = {".xlsx", ".xls", ".csv", ".tsv"}
 
@@ -104,8 +107,17 @@ def firms_page():
 @login_required
 def files_page():
     summary = file_manager.storage_summary(UPLOAD_DIR, OUTPUT_DIR)
+    try:
+        all_projects = projects.list_all()
+        for p in all_projects:
+            p["files"] = projects.list_files(p["id"])
+    except Exception as e:
+        app.logger.warning(f"Could not load Supabase projects: {e}")
+        all_projects = []
     return render_template("files.html",
                            summary=summary,
+                           projects=all_projects,
+                           kind_labels=KIND_LABELS,
                            user=session.get("user"))
 
 
@@ -287,7 +299,29 @@ def api_gstr3b_download():
         write_gstr3b_excel(out_path, firm, period_label, gstr2b, computation)
     except Exception as e:
         return jsonify({"ok": False, "error": f"Excel generation failed: {e}"}), 500
-
+# ----- Save GSTR-3B outputs to Supabase project archive -----
+    try:
+        firm_gstin_str = (firm.get("gstin") or "").upper()
+        firm_uuid = firms.get_uuid(firm_gstin_str)
+        if firm_uuid and period:
+            project = projects.get_or_create(
+                firm_uuid=firm_uuid,
+                period=period,
+                period_label=period_label,
+            )
+            projects.add_file_from_path(
+                project["id"], "gstr3b_excel",
+                out_path, filename=out_path.name)
+            gstr2b_filename = (gstr2b or {}).get("filename")
+            if gstr2b_filename:
+                matches = sorted(UPLOAD_DIR.glob(f"gstr2b_*_{gstr2b_filename}"),
+                                 key=lambda p: p.stat().st_mtime, reverse=True)
+                if matches:
+                    projects.add_file_from_path(
+                        project["id"], "gstr2b_input",
+                        matches[0], filename=gstr2b_filename)
+    except Exception as _e:
+        app.logger.warning(f"Supabase GSTR-3B upload failed: {_e}")
     return send_from_directory(
         out_path.parent,
         out_path.name,
@@ -493,6 +527,29 @@ def api_process():
 @login_required
 def download_file(subpath):
     return send_from_directory(OUTPUT_DIR, subpath, as_attachment=True)
+
+@app.route("/project_file/<file_id>/download")
+@login_required
+def download_project_file(file_id):
+    """Download a project file from Supabase Storage via signed URL redirect."""
+    rec = projects.get_file_by_id(file_id)
+    if not rec:
+        return "File not found", 404
+    try:
+        url = projects.get_signed_url(rec["storage_path"], expires_in=600)
+        if url:
+            return redirect(url)
+        from flask import Response
+        data = projects.download_file(rec["storage_path"])
+        return Response(
+            data,
+            headers={
+                "Content-Disposition": f'attachment; filename="{rec["filename"]}"',
+                "Content-Type": "application/octet-stream",
+            },
+        )
+    except Exception as e:
+        return f"Download failed: {e}", 500
 
 
 # ======================================================================
@@ -873,7 +930,27 @@ def _process_one(file, firm, period, period_start, period_end, batch_dir):
 
     build_report(firm["name"], firm_gstin, period, invoices, buckets,
                  exceptions, str(report_path))
-
+# ----- Save outputs to Supabase project archive -----
+    try:
+        firm_uuid = firms.get_uuid(firm_gstin)
+        if firm_uuid:
+            project = projects.get_or_create(
+                firm_uuid=firm_uuid,
+                period=period,
+                period_label=period_to_label(period),
+            )
+            projects.add_file_from_path(
+                project["id"], "gstr1_json",
+                json_path, filename=json_path.name)
+            projects.add_file_from_path(
+                project["id"], "gstr1_report",
+                report_path, filename=report_path.name)
+            if upload_path.exists():
+                projects.add_file_from_path(
+                    project["id"], "sales_register",
+                    upload_path, filename=upload_path.name)
+    except Exception as _e:
+        app.logger.warning(f"Supabase upload failed: {_e}")
     return {
         "ok": True,
         "firm_id": firm["gstin"],
@@ -991,6 +1068,7 @@ def _preview_one(file, firm, period, period_start, period_end, timestamp):
         # Stored in cache (not returned to UI):
         "_invoices": invoices,
         "_exceptions": exceptions,
+        "upload_path": str(upload_path),
     }
 
 
@@ -1027,7 +1105,28 @@ def _generate_one(preview, period, batch_dir, excluded_keys: set):
     build_report(firm_name, firm_gstin, period, invoices, buckets,
                  preview["_exceptions"], str(report_path),
                  excluded_invoices=excluded_list)
-
+# ----- Save outputs to Supabase project archive -----
+    try:
+        firm_uuid = firms.get_uuid(firm_gstin)
+        if firm_uuid:
+            project = projects.get_or_create(
+                firm_uuid=firm_uuid,
+                period=period,
+                period_label=period_to_label(period),
+            )
+            projects.add_file_from_path(
+                project["id"], "gstr1_json",
+                json_path, filename=json_path.name)
+            projects.add_file_from_path(
+                project["id"], "gstr1_report",
+                report_path, filename=report_path.name)
+            sales_src = preview.get("upload_path")
+            if sales_src and Path(sales_src).exists():
+                projects.add_file_from_path(
+                    project["id"], "sales_register",
+                    Path(sales_src), filename=Path(sales_src).name)
+    except Exception as _e:
+        app.logger.warning(f"Supabase upload failed for {firm_name}/{period}: {_e}")
     return {
         "ok": True,
         "firm_id": preview["firm_id"],
