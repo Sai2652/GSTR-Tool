@@ -8,6 +8,108 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+<style>
+  /* Page-specific styles */
+  .firm-section { margin-bottom: 40px; }
+  .firm-header {
+    display: flex; align-items: baseline; gap: 14px;
+    border-bottom: 1px solid #E0D7BD;
+    padding-bottom: 12px; margin-bottom: 18px;
+  }
+  .firm-header h2 {
+    font-family: 'Crimson Pro', serif;
+    font-size: 24px; font-weight: 500;
+    color: #0B1638; margin: 0;
+    letter-spacing: -0.3px;
+  }
+  .firm-header .gstin {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; color: #6B6357;
+    letter-spacing: 0.5px;
+  }
+  .period-card {
+    background: #FBF6E8;
+    border: 1px solid #E0D7BD;
+    border-radius: 4px;
+    padding: 18px 22px;
+    margin-bottom: 14px;
+  }
+  .period-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .period-label {
+    font-family: 'Crimson Pro', serif;
+    font-size: 18px; font-weight: 500;
+    color: #0B1638;
+  }
+  .period-meta {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 11px; color: #6B6357;
+    text-transform: uppercase; letter-spacing: 2px;
+  }
+  .file-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .file-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: #ffffff;
+    border: 1px solid #E0D7BD;
+    border-radius: 3px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+  }
+  .file-icon {
+    flex: 0 0 32px; height: 32px;
+    background: #0B1638; color: #F4EDD7;
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Crimson Pro', serif;
+    font-weight: 700; font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+  .file-icon.gstr1 { background: #0B1638; }
+  .file-icon.gstr3b { background: #C9A86A; color: #0B1638; }
+  .file-icon.sales { background: #5B7E3D; }
+  .file-icon.gstr2b { background: #8B6F47; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-kind {
+    font-weight: 500; color: #0B1638; font-size: 13px;
+  }
+  .file-name {
+    color: #6B6357; font-size: 11px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .file-action a {
+    color: #0B1638; text-decoration: none;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 11px; font-weight: 600;
+    padding: 5px 10px; border: 1px solid #0B1638;
+    border-radius: 3px; display: inline-block;
+  }
+  .file-action a:hover {
+    background: #0B1638; color: #F4EDD7;
+  }
+  .empty-state {
+    text-align: center; padding: 60px 30px;
+    background: #FBF6E8; border: 1px dashed #C9A86A;
+    border-radius: 4px;
+  }
+  .empty-state .icon {
+    font-family: 'Crimson Pro', serif;
+    font-size: 36px; color: #C9A86A; margin-bottom: 12px;
+  }
+  .empty-state p { color: #6B6357; font-family: 'IBM Plex Sans', sans-serif; }
+  .pick-firm {
+    display: inline-block;
+    margin-top: 10px;
+    color: #0B1638; text-decoration: underline;
+  }
+</style>
 </head>
 <body>
 
@@ -17,91 +119,94 @@
       <span class="brand-mark"></span>
       <div class="brand-title">ANYAH &amp; CO.</div>
     </a>
-   <nav>
+    <nav>
       <a href="{{ url_for('dashboard') }}" class="nav-link">Dashboard</a>
       <a href="{{ url_for('gstr1_page') }}" class="nav-link">Generate</a>
       <a href="{{ url_for('gstr3b_page') }}" class="nav-link">GSTR-3B</a>
-      <a href="{{ url_for('firms_page') }}" class="nav-link active">Firms</a>
+      <a href="{{ url_for('firms_page') }}" class="nav-link">Firms</a>
       <a href="{{ url_for('customers_page') }}" class="nav-link">Customers</a>
-      <a href="{{ url_for('files_page') }}" class="nav-link">Files</a>
+      <a href="{{ url_for('files_page') }}" class="nav-link active">Files</a>
       <a href="{{ url_for('logout') }}" class="nav-link nav-logout">Sign out</a>
     </nav>
   </div>
 </header>
 
 <main class="container">
-
   <section class="step">
     <div class="step-head">
-      <h2>Storage</h2>
-      <span class="step-aside">Files persist until manually cleared.</span>
+      <h2>Project archive</h2>
+      <span class="step-aside">All returns, organised by firm and period</span>
+    </div>
+    <div class="cache-info">
+      <p>Every GSTR-1 and GSTR-3B you generate is auto-saved to your Supabase project archive under the firm and return period. Files persist across logouts and restarts. Click any file to download.</p>
     </div>
 
-    <div class="storage-grid">
-      <div class="storage-card">
-        <div class="storage-head">
-          <div>
-            <div class="storage-label">Uploads</div>
-            <div class="storage-stat"><span class="storage-num">{{ summary.uploads.count }}</span> files · <span>{{ summary.uploads.total_human }}</span></div>
+    {% if projects and projects|length > 0 %}
+      {# Group projects by firm #}
+      {% set firm_map = {} %}
+      {% for p in projects %}
+        {% set _ = firm_map.setdefault(p.firm.gstin, {'name': p.firm.name, 'gstin': p.firm.gstin, 'projects': []}) %}
+        {% set _ = firm_map[p.firm.gstin].projects.append(p) %}
+      {% endfor %}
+
+      {% for gstin, f in firm_map.items() %}
+        <div class="firm-section">
+          <div class="firm-header">
+            <h2>{{ f.name }}</h2>
+            <span class="gstin">{{ f.gstin }}</span>
           </div>
-          <button class="btn-ghost btn-danger" data-clear="uploads"
-                  {% if summary.uploads.count == 0 %}disabled{% endif %}>
-            Clear all
-          </button>
-        </div>
-        <div class="storage-list">
-          {% for f in summary.uploads.files[:50] %}
-            <div class="storage-row" data-target="uploads" data-path="{{ f.path }}">
-              <span class="storage-name">{{ f.name }}</span>
-              <span class="storage-meta">{{ f.size_human }} · {{ f.modified }}</span>
-              <button class="storage-delete" data-action="delete-one" data-target="uploads" data-path="{{ f.path }}">×</button>
-            </div>
-          {% else %}
-            <div class="storage-empty">No uploads stored.</div>
-          {% endfor %}
-          {% if summary.uploads.count > 50 %}
-            <div class="storage-empty">… and {{ summary.uploads.count - 50 }} more</div>
-          {% endif %}
-        </div>
-      </div>
 
-      <div class="storage-card">
-        <div class="storage-head">
-          <div>
-            <div class="storage-label">Generated outputs</div>
-            <div class="storage-stat"><span class="storage-num">{{ summary.outputs.count }}</span> files · <span>{{ summary.outputs.total_human }}</span></div>
-          </div>
-          <button class="btn-ghost btn-danger" data-clear="outputs"
-                  {% if summary.outputs.count == 0 %}disabled{% endif %}>
-            Clear all
-          </button>
-        </div>
-        <div class="storage-list">
-          {% for f in summary.outputs.files[:50] %}
-            <div class="storage-row" data-target="outputs" data-path="{{ f.path }}">
-              <span class="storage-name">{{ f.name }}</span>
-              <span class="storage-meta">{{ f.size_human }} · {{ f.modified }}</span>
-              <button class="storage-delete" data-action="delete-one" data-target="outputs" data-path="{{ f.path }}">×</button>
-            </div>
-          {% else %}
-            <div class="storage-empty">No outputs stored.</div>
-          {% endfor %}
-          {% if summary.outputs.count > 50 %}
-            <div class="storage-empty">… and {{ summary.outputs.count - 50 }} more</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
+          {% for proj in f.projects %}
+            <div class="period-card">
+              <div class="period-head">
+                <div class="period-label">{{ proj.period_label or proj.period }}</div>
+                <div class="period-meta">{{ proj.files|length }} file{{ 's' if proj.files|length != 1 else '' }}</div>
+              </div>
 
-    <div class="storage-actions">
-      <button class="btn-ghost btn-danger" data-clear="all">Clear everything</button>
-      <span class="action-hint">This deletes all uploaded sales sheets and all generated JSONs / reports. Firm profiles are not affected.</span>
-    </div>
+              {% if proj.files %}
+                <div class="file-list">
+                  {% for f in proj.files %}
+                    <div class="file-item">
+                      <div class="file-icon
+                        {%- if f.kind == 'sales_register' %} sales
+                        {%- elif f.kind == 'gstr1_json' or f.kind == 'gstr1_report' %} gstr1
+                        {%- elif f.kind == 'gstr2b_input' %} gstr2b
+                        {%- elif f.kind == 'gstr3b_excel' %} gstr3b
+                        {%- endif %}">
+                        {%- if f.kind == 'sales_register' %}SR
+                        {%- elif f.kind == 'gstr1_json' %}G1J
+                        {%- elif f.kind == 'gstr1_report' %}G1R
+                        {%- elif f.kind == 'gstr2b_input' %}G2B
+                        {%- elif f.kind == 'gstr3b_excel' %}G3B
+                        {%- endif -%}
+                      </div>
+                      <div class="file-info">
+                        <div class="file-kind">{{ kind_labels[f.kind] if kind_labels and f.kind in kind_labels else f.kind }}</div>
+                        <div class="file-name" title="{{ f.filename }}">{{ f.filename }}</div>
+                      </div>
+                      <div class="file-action">
+                        <a href="{{ url_for('download_project_file', file_id=f.id) }}">Download</a>
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p style="color:#6B6357; font-style: italic; font-size: 13px; margin: 8px 0 0;">No files in this project yet.</p>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <div class="icon">A&Co.</div>
+        <p>No projects yet.</p>
+        <p style="margin-top: 8px; font-size: 13px;">Generate a <a href="{{ url_for('gstr1_page') }}" class="pick-firm">GSTR-1</a> or <a href="{{ url_for('gstr3b_page') }}" class="pick-firm">GSTR-3B</a> for any firm — files will be saved here automatically.</p>
+      </div>
+    {% endif %}
   </section>
-
 </main>
 
-<script src="{{ url_for('static', filename='files.js') }}"></script>
 <footer class="site-footer">
   <div class="footer-inner">
     <span class="footer-mark">A&amp;Co.</span>
@@ -109,5 +214,6 @@
     <span class="footer-meta">Confidential. Not for distribution.</span>
   </div>
 </footer>
+
 </body>
 </html>
