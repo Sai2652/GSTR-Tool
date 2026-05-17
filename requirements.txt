@@ -5,3 +5,4 @@ openpyxl
 rapidfuzz
 xlrd
 bcrypt
+supabase>=2.0
