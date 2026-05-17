@@ -170,14 +170,67 @@ def api_gstr3b_parse():
 @login_required
 def api_gstr3b_output_from_gstr1():
     """
-    Look up the most recent GSTR-1 JSON for the given firm + period and
-    return the total output tax (sum of all sections).
+    Look up the most recent GSTR-1 JSON for the given firm + period in the
+    Supabase project archive (falls back to local disk if Supabase miss).
     """
     firm_id = (request.args.get("firm") or "").strip()
     period = (request.args.get("period") or "").strip()
 
     if not firm_id or not period:
         return jsonify({"ok": False, "error": "firm and period required"}), 400
+
+    firm = firms.get(firm_id)
+    if not firm:
+        return jsonify({"ok": False, "error": "Firm not found"}), 404
+
+    gstr1 = None
+    source_file = ""
+
+    # ----- Try Supabase first (the permanent archive) -----
+    try:
+        firm_uuid = firms.get_uuid(firm["gstin"])
+        if firm_uuid:
+            proj_resp = (projects._client.table("projects").select("*")
+                         .eq("firm_id", firm_uuid).eq("period", period)
+                         .limit(1).execute())
+            if proj_resp.data:
+                project_id = proj_resp.data[0]["id"]
+                files = projects.list_files(project_id)
+                json_file = next((f for f in files if f["kind"] == "gstr1_json"), None)
+                if json_file:
+                    raw = projects.download_file(json_file["storage_path"])
+                    gstr1 = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+                    source_file = json_file["filename"]
+    except Exception as e:
+        app.logger.warning(f"Supabase GSTR-1 lookup failed: {e}")
+
+    # ----- Fall back to local disk (for current-session files) -----
+    if gstr1 is None:
+        safe_name = "".join(c if c.isalnum() else "_" for c in firm["name"])
+        # Search recursively because generated files live in batch_<ts>/ subdirs,
+        # and use the actual filename pattern GSTR1_<safe>_<period>.json
+        candidates = sorted(
+            OUTPUT_DIR.rglob(f"GSTR1_{safe_name}_{period}.json"),
+            key=lambda p: p.stat().st_mtime, reverse=True,
+        )
+        if candidates:
+            try:
+                with open(candidates[0], "r", encoding="utf-8") as fh:
+                    gstr1 = json.load(fh)
+                source_file = candidates[0].name
+            except Exception as e:
+                return jsonify({"ok": False, "error": f"Could not read JSON: {e}"}), 500
+
+    if gstr1 is None:
+        return jsonify({"ok": True, "found": False})
+
+    totals = _sum_gstr1_output(gstr1)
+    return jsonify({
+        "ok": True,
+        "found": True,
+        "source_file": source_file,
+        "totals": totals,
+    })
 
     firm = firms.get(firm_id)
     if not firm:
