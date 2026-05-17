@@ -56,10 +56,10 @@ def register_auth_routes(app):
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if not is_production():
-            return redirect(url_for("index"))
+            return redirect(url_for("dashboard"))
 
         if session.get("logged_in"):
-            return redirect(url_for("index"))
+            return redirect(url_for("dashboard"))
 
         if request.method == "POST":
             username, password_hash = get_credentials()
@@ -74,7 +74,7 @@ def register_auth_routes(app):
                 session["logged_in"] = True
                 session["user"] = username
                 session.permanent = True
-                next_url = request.args.get("next") or url_for("index")
+                next_url = request.args.get("next") or url_for("dashboard")
                 return redirect(next_url)
 
             flash("Invalid username or password.", "error")
@@ -84,7 +84,7 @@ def register_auth_routes(app):
     @app.route("/logout")
     def logout():
         session.clear()
-        return redirect(url_for("login") if is_production() else url_for("index"))
+        return redirect(url_for("login") if is_production() else url_for("dashboard"))
 
     @app.before_request
     def require_login_on_protected():
