@@ -1,11 +1,11 @@
 """
 Firm storage — Supabase Postgres backend.
 
-Drop-in replacement for the JSON-based FirmStore. The public method
-signatures match the original so app.py needs minimal changes.
+Drop-in replacement for the JSON-based FirmStore. Public API matches
+the original so app.py needs no other changes.
 
-GSTIN remains the user-facing identifier; internally each firm also has
-a UUID `id` used for foreign-key references from the `projects` table.
+Accepts EITHER a GSTIN (15 chars) or a UUID (36 chars with hyphens) as
+the firm_id parameter. Internally the projects table joins on UUID.
 """
 from typing import Any, Dict, List, Optional
 
@@ -15,10 +15,8 @@ from supabase_client import get_client
 class FirmStore:
     """Firms persisted in the Supabase `firms` table."""
 
-    # The constructor accepts an optional legacy path argument (e.g. for
-    # callers still writing `FirmStore(DATA_DIR / "firms.json")`) but
-    # ignores it — data lives in Postgres now.
     def __init__(self, _legacy_path: Any = None) -> None:
+        # Path arg is ignored; data lives in Postgres now.
         self._client = get_client()
 
     # ---- Read --------------------------------------------------------
@@ -29,43 +27,43 @@ class FirmStore:
         return resp.data or []
 
     def get(self, firm_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Look up a firm by either its GSTIN (15 chars) or its UUID id
-    (36 chars with hyphens). Returns the full row or None.
-    """
-    if not firm_id:
+        """
+        Look up a firm by either GSTIN (15 chars) or UUID id (36 chars).
+        Returns the full row or None.
+        """
+        if not firm_id:
+            return None
+        key = firm_id.strip()
+
+        # UUID lookup (36 chars, contains 4 hyphens)
+        if len(key) == 36 and key.count("-") == 4:
+            try:
+                resp = (self._client.table("firms").select("*")
+                        .eq("id", key).limit(1).execute())
+                if resp.data:
+                    return resp.data[0]
+            except Exception:
+                pass
+
+        # GSTIN lookup (15 chars, uppercase)
+        if len(key) == 15:
+            try:
+                resp = (self._client.table("firms").select("*")
+                        .eq("gstin", key.upper()).limit(1).execute())
+                if resp.data:
+                    return resp.data[0]
+            except Exception:
+                pass
+
         return None
-    key = firm_id.strip()
 
-    # UUID lookup (36 chars, contains 4 hyphens)
-    if len(key) == 36 and key.count("-") == 4:
-        try:
-            resp = (self._client.table("firms").select("*")
-                    .eq("id", key).limit(1).execute())
-            if resp.data:
-                return resp.data[0]
-        except Exception:
-            pass
-
-    # GSTIN lookup (15 chars, uppercase)
-    if len(key) == 15:
-        try:
-            resp = (self._client.table("firms").select("*")
-                    .eq("gstin", key.upper()).limit(1).execute())
-            if resp.data:
-                return resp.data[0]
-        except Exception:
-            pass
-
-    return None
-
-    # Alias kept for any older code that uses get_firm()
+    # Alias for any older code using get_firm()
     def get_firm(self, firm_id: str) -> Optional[Dict[str, Any]]:
         return self.get(firm_id)
 
-    def get_uuid(self, gstin: str) -> Optional[str]:
-        """Internal helper: GSTIN → UUID id (needed for projects.firm_id)."""
-        f = self.get(gstin)
+    def get_uuid(self, firm_id: str) -> Optional[str]:
+        """Helper used by ProjectStore — accepts GSTIN or UUID, returns UUID."""
+        f = self.get(firm_id)
         return f["id"] if f else None
 
     # ---- Write -------------------------------------------------------
@@ -103,12 +101,12 @@ class FirmStore:
         if not payload:
             return firm
         resp = (self._client.table("firms").update(payload)
-                .eq("gstin", firm["gstin"]).execute())
+                .eq("id", firm["id"]).execute())
         return resp.data[0] if resp.data else firm
 
     def delete(self, firm_id: str) -> bool:
         firm = self.get(firm_id)
         if not firm:
             return False
-        self._client.table("firms").delete().eq("gstin", firm["gstin"]).execute()
+        self._client.table("firms").delete().eq("id", firm["id"]).execute()
         return True
