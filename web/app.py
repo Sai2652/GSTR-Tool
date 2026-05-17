@@ -77,7 +77,15 @@ register_auth_routes(app)
 # ---------- Pages ----------------------------------------------------------
 @app.route("/")
 @login_required
-def index():
+def dashboard():
+    return render_template("dashboard.html",
+                           user=session.get("user"),
+                           recent_outputs=_recent_outputs(limit=8),
+                           current_year=datetime.now().year)
+
+@app.route("/gstr1")
+@login_required
+def gstr1_page():
     return render_template("index.html",
                            firms=firms.list_firms(),
                            default_period=_default_period(),
@@ -777,6 +785,45 @@ def _default_period() -> str:
     else:
         mm, yy = now.month - 1, now.year
     return f"{mm:02d}{yy}"
+
+def _recent_outputs(limit=8):
+    """Recent JSON/Excel outputs from OUTPUT_DIR for the dashboard."""
+    items = []
+    try:
+        for p in OUTPUT_DIR.rglob("*"):
+            if not p.is_file():
+                continue
+            name = p.name
+            if name.startswith("GSTR1_") and name.endswith(".json"):
+                kind = "GSTR-1"
+            elif name.startswith("GSTR1_Report_") and name.endswith(".xlsx"):
+                kind = "GSTR-1"
+            elif name.startswith("GSTR3B_") and name.endswith(".xlsx"):
+                kind = "GSTR-3B"
+            else:
+                continue
+            items.append({"kind": kind, "name": name, "mtime": p.stat().st_mtime})
+    except Exception:
+        return []
+
+    items.sort(key=lambda r: r["mtime"], reverse=True)
+    items = items[:limit]
+
+    now = datetime.now()
+    out = []
+    for it in items:
+        ts = datetime.fromtimestamp(it["mtime"])
+        delta = now - ts
+        if delta.total_seconds() < 3600:
+            when = f"{int(delta.total_seconds() / 60)} min ago"
+        elif delta.total_seconds() < 86400:
+            when = f"{int(delta.total_seconds() / 3600)} hr ago"
+        elif delta.days < 30:
+            when = f"{delta.days} d ago"
+        else:
+            when = ts.strftime("%d %b %Y")
+        out.append({"kind": it["kind"], "name": it["name"], "when": when})
+    return out
 
 
 def _process_one(file, firm, period, period_start, period_end, batch_dir):
