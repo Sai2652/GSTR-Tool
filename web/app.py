@@ -1,0 +1,844 @@
+"""
+GSTR-1 Generator — Web UI
+Flask app with auth, firm profiles, batch processing, file management.
+"""
+import json
+import os
+import sys
+import zipfile
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import pandas as pd
+from flask import (
+    Flask, render_template, request, jsonify, redirect,
+    url_for, send_from_directory, session,
+)
+from werkzeug.utils import secure_filename
+
+ROOT = Path(__file__).parent
+sys.path.insert(0, str(ROOT.parent / "src"))
+
+from data_reader import read_sales
+from validator import validate_dataframe
+from consolidator import consolidate_invoices, classify_invoices
+from json_builder import build_gstr1_json
+from report_builder import build_report
+from gstin_validator import validate_gstin
+from preflight import run_all_preflight_checks
+
+from firm_store import FirmStore
+from period_utils import normalize_period, period_to_label, period_bounds
+from auth import register_auth_routes, login_required
+from customer_store import CustomerStore
+from batch_cache import BatchStateCache
+import file_manager
+
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
+
+# Secret key — MUST be set in production
+app.secret_key = os.environ.get("FLASK_SECRET_KEY")
+if not app.secret_key:
+    if os.environ.get("FLASK_ENV") == "production":
+        raise RuntimeError(
+            "FLASK_SECRET_KEY environment variable must be set in production. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+    app.secret_key = "dev-only-secret-do-not-use-in-production"
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("FLASK_ENV") == "production",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
+)
+
+# Storage location — DATA_ROOT can be overridden via env (used on Render)
+DATA_ROOT = Path(os.environ.get("DATA_ROOT", str(ROOT)))
+UPLOAD_DIR = DATA_ROOT / "uploads"
+OUTPUT_DIR = DATA_ROOT / "output"
+DATA_DIR = DATA_ROOT / "data"
+for d in (UPLOAD_DIR, OUTPUT_DIR, DATA_DIR):
+    d.mkdir(parents=True, exist_ok=True)
+
+firms = FirmStore(DATA_DIR / "firms.json")
+customers = CustomerStore(DATA_DIR / "customers.json")
+batch_cache = BatchStateCache(ttl_seconds=3600)
+ALLOWED_EXT = {".xlsx", ".xls", ".csv", ".tsv"}
+
+register_auth_routes(app)
+
+
+# ---------- Pages ----------------------------------------------------------
+@app.route("/")
+@login_required
+def index():
+    return render_template("index.html",
+                           firms=firms.list_firms(),
+                           default_period=_default_period(),
+                           user=session.get("user"))
+
+
+@app.route("/firms")
+@login_required
+def firms_page():
+    return render_template("firms.html",
+                           firms=firms.list_firms(),
+                           user=session.get("user"))
+
+
+@app.route("/files")
+@login_required
+def files_page():
+    summary = file_manager.storage_summary(UPLOAD_DIR, OUTPUT_DIR)
+    return render_template("files.html",
+                           summary=summary,
+                           user=session.get("user"))
+
+
+@app.route("/customers")
+@login_required
+def customers_page():
+    return render_template("customers.html",
+                           customers=customers.list_all(),
+                           user=session.get("user"))
+
+
+# ---------- Firm API -------------------------------------------------------
+@app.route("/api/firms", methods=["GET"])
+def api_list_firms():
+    return jsonify(firms.list_firms())
+
+
+@app.route("/api/firms", methods=["POST"])
+def api_add_firm():
+    data = request.json or {}
+    try:
+        firm = firms.add(name=data.get("name", ""),
+                         gstin=data.get("gstin", ""),
+                         legal_name=data.get("legal_name", ""))
+        return jsonify({"ok": True, "firm": firm})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@app.route("/api/firms/<firm_id>", methods=["DELETE"])
+def api_delete_firm(firm_id):
+    return jsonify({"ok": firms.delete(firm_id)})
+
+
+@app.route("/api/firms/<firm_id>", methods=["PATCH"])
+def api_update_firm(firm_id):
+    data = request.json or {}
+    try:
+        firm = firms.update(firm_id, name=data.get("name"),
+                            legal_name=data.get("legal_name"))
+        return jsonify({"ok": True, "firm": firm})
+    except KeyError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+
+
+# ---------- GSTIN check ----------------------------------------------------
+@app.route("/api/check_gstin", methods=["POST"])
+def api_check_gstin():
+    data = request.json or {}
+    g = (data.get("gstin") or "").strip().upper().replace(" ", "")
+    result = validate_gstin(g)
+    # If valid, also return any cached name
+    if result.get("valid"):
+        cached_name = customers.get_name(result["gstin"])
+        result["cached_name"] = cached_name
+    else:
+        result["cached_name"] = ""
+    return jsonify(result)
+
+
+# ---------- Customer cache API --------------------------------------------
+@app.route("/api/customers", methods=["GET"])
+def api_list_customers():
+    return jsonify({
+        "count": customers.count(),
+        "customers": customers.list_all(),
+    })
+
+
+@app.route("/api/customers/<gstin>", methods=["GET"])
+def api_get_customer(gstin):
+    rec = customers.get(gstin)
+    if rec:
+        return jsonify({"ok": True, "gstin": gstin.upper(), **rec})
+    return jsonify({"ok": False, "error": "Not found"}), 404
+
+
+@app.route("/api/customers/<gstin>", methods=["PATCH"])
+def api_update_customer(gstin):
+    data = request.json or {}
+    new_name = (data.get("name") or "").strip()
+    if not new_name:
+        return jsonify({"ok": False, "error": "Name required"}), 400
+    ok = customers.update_name(gstin, new_name)
+    return jsonify({"ok": ok})
+
+
+@app.route("/api/customers/<gstin>", methods=["DELETE"])
+def api_delete_customer(gstin):
+    return jsonify({"ok": customers.delete(gstin)})
+
+
+@app.route("/api/customers/clear", methods=["POST"])
+def api_clear_customers():
+    n = customers.clear_all()
+    return jsonify({"ok": True, "deleted": n})
+
+
+# ---------- File management API --------------------------------------------
+@app.route("/api/files/clear", methods=["POST"])
+def api_clear_files():
+    data = request.json or {}
+    target = data.get("target", "")
+    counts = {"uploads": 0, "outputs": 0}
+    if target in ("uploads", "all"):
+        counts["uploads"] = file_manager.clear_directory(UPLOAD_DIR)
+    if target in ("outputs", "all"):
+        counts["outputs"] = file_manager.clear_directory(OUTPUT_DIR)
+    return jsonify({"ok": True, "deleted": counts})
+
+
+@app.route("/api/files/delete", methods=["POST"])
+def api_delete_file():
+    data = request.json or {}
+    target = data.get("target")
+    rel = data.get("path", "")
+    base = UPLOAD_DIR if target == "uploads" else OUTPUT_DIR if target == "outputs" else None
+    if not base:
+        return jsonify({"ok": False, "error": "Invalid target"}), 400
+    return jsonify({"ok": file_manager.delete_one(base, rel)})
+
+
+# ---------- Batch processing ----------------------------------------------
+@app.route("/api/process", methods=["POST"])
+def api_process():
+    raw_period = request.form.get("period", "")
+    try:
+        period = normalize_period(raw_period)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    try:
+        jobs = json.loads(request.form.get("jobs", "[]"))
+    except json.JSONDecodeError:
+        return jsonify({"ok": False, "error": "Invalid jobs payload"}), 400
+
+    if not jobs:
+        return jsonify({"ok": False, "error": "No jobs provided"}), 400
+
+    results = []
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    batch_dir = OUTPUT_DIR / f"batch_{timestamp}"
+    batch_dir.mkdir(exist_ok=True)
+    period_start, period_end = period_bounds(period)
+
+    for job in jobs:
+        firm_id = job.get("firm_id")
+        file_field = job.get("file_field")
+        firm = firms.get(firm_id)
+        if not firm:
+            results.append({"firm_id": firm_id, "ok": False, "error": "Firm not found"})
+            continue
+        if file_field not in request.files:
+            results.append({"firm_id": firm_id, "firm_name": firm["name"],
+                            "ok": False, "error": "File missing"})
+            continue
+        file = request.files[file_field]
+        if not file.filename:
+            results.append({"firm_id": firm_id, "firm_name": firm["name"],
+                            "ok": False, "error": "No filename"})
+            continue
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ALLOWED_EXT:
+            results.append({"firm_id": firm_id, "firm_name": firm["name"],
+                            "ok": False, "error": f"Unsupported file type: {ext}"})
+            continue
+
+        try:
+            r = _process_one(file, firm, period, period_start, period_end, batch_dir)
+            results.append(r)
+        except Exception as e:
+            import traceback
+            results.append({
+                "firm_id": firm_id, "firm_name": firm["name"], "ok": False,
+                "error": f"{type(e).__name__}: {e}",
+                "trace": traceback.format_exc(),
+            })
+
+    zip_path = batch_dir / f"GSTR1_Batch_{period}_{timestamp}.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        for r in results:
+            if r.get("ok"):
+                for key in ("json_path", "report_path"):
+                    p = r.get(key)
+                    if p and Path(p).exists():
+                        z.write(p, Path(p).name)
+
+    return jsonify({
+        "ok": True,
+        "period": period,
+        "period_label": period_to_label(period),
+        "batch_dir": str(batch_dir.relative_to(OUTPUT_DIR)).replace("\\", "/"),
+        "zip_url": url_for("download_file", subpath=str(zip_path.relative_to(OUTPUT_DIR)).replace("\\", "/")),
+        "results": [
+            {
+                **{k: v for k, v in r.items() if k not in ("trace",)},
+                "json_url": url_for("download_file", subpath=str(Path(r["json_path"]).relative_to(OUTPUT_DIR)).replace("\\", "/")) if r.get("json_path") else None,
+                "report_url": url_for("download_file", subpath=str(Path(r["report_path"]).relative_to(OUTPUT_DIR)).replace("\\", "/")) if r.get("report_path") else None,
+            }
+            for r in results
+        ],
+    })
+
+
+@app.route("/download/<path:subpath>")
+@login_required
+def download_file(subpath):
+    return send_from_directory(OUTPUT_DIR, subpath, as_attachment=True)
+
+
+# ======================================================================
+# Two-phase processing: /api/preview then /api/generate
+# Allows the user to review parsed invoices and exclude rows before JSON.
+# ======================================================================
+@app.route("/api/preview", methods=["POST"])
+def api_preview():
+    """
+    Parse uploaded sheets, run validations, return a previewable summary
+    plus a batch_id that can be used in /api/generate.
+    """
+    raw_period = request.form.get("period", "")
+    try:
+        period = normalize_period(raw_period)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    try:
+        jobs = json.loads(request.form.get("jobs", "[]"))
+    except json.JSONDecodeError:
+        return jsonify({"ok": False, "error": "Invalid jobs payload"}), 400
+
+    if not jobs:
+        return jsonify({"ok": False, "error": "No jobs provided"}), 400
+
+    period_start, period_end = period_bounds(period)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    previews = []
+    for job in jobs:
+        firm_id = job.get("firm_id")
+        file_field = job.get("file_field")
+        firm = firms.get(firm_id)
+        if not firm:
+            previews.append({"firm_id": firm_id, "ok": False, "error": "Firm not found"})
+            continue
+        if file_field not in request.files:
+            previews.append({"firm_id": firm_id, "firm_name": firm["name"],
+                             "ok": False, "error": "File missing"})
+            continue
+        file = request.files[file_field]
+        if not file.filename:
+            previews.append({"firm_id": firm_id, "firm_name": firm["name"],
+                             "ok": False, "error": "No filename"})
+            continue
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ALLOWED_EXT:
+            previews.append({"firm_id": firm_id, "firm_name": firm["name"],
+                             "ok": False, "error": f"Unsupported file type: {ext}"})
+            continue
+
+        try:
+            preview = _preview_one(file, firm, period, period_start, period_end, timestamp)
+            previews.append(preview)
+        except Exception as e:
+            import traceback
+            previews.append({
+                "firm_id": firm_id, "firm_name": firm["name"], "ok": False,
+                "error": f"{type(e).__name__}: {e}",
+                "trace": traceback.format_exc(),
+            })
+
+    # Cache the entire preview state so generate can pick it up
+    batch_id = batch_cache.put({
+        "period": period,
+        "timestamp": timestamp,
+        "previews": previews,
+    })
+
+    # Build JSON-safe response (drop the heavy 'invoices' / 'df_records' from cache copy)
+    response_previews = []
+    for p in previews:
+        if not p.get("ok"):
+            response_previews.append({k: v for k, v in p.items() if k != "trace"})
+            continue
+        response_previews.append({
+            "ok": True,
+            "firm_id": p["firm_id"],
+            "firm_name": p["firm_name"],
+            "firm_gstin": p["firm_gstin"],
+            "stats": p["stats"],
+            "warnings": p["warnings"],
+            "preflight": p["preflight_summary"],
+            "invoices": p["invoices_preview"],   # serialized for UI
+        })
+
+    return jsonify({
+        "ok": True,
+        "batch_id": batch_id,
+        "period": period,
+        "period_label": period_to_label(period),
+        "previews": response_previews,
+    })
+
+
+@app.route("/api/generate", methods=["POST"])
+def api_generate():
+    """
+    Generate JSON files from a previously-previewed batch, optionally
+    excluding specific document keys.
+
+    Request:
+      {
+        "batch_id": "...",
+        "exclusions": {                       (optional)
+          "<firm_id>": ["doc_key_1", "doc_key_2", ...]
+        }
+      }
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    batch_id = data.get("batch_id", "")
+    exclusions = data.get("exclusions", {}) or {}
+
+    state = batch_cache.get(batch_id)
+    if not state:
+        return jsonify({"ok": False, "error": "Batch expired or not found. Please re-upload."}), 400
+
+    period = state["period"]
+    timestamp = state["timestamp"]
+    batch_dir = OUTPUT_DIR / f"batch_{timestamp}"
+    batch_dir.mkdir(exist_ok=True)
+
+    results = []
+    for preview in state["previews"]:
+        if not preview.get("ok"):
+            results.append({k: v for k, v in preview.items() if k not in ("trace",)})
+            continue
+        try:
+            firm_id = preview["firm_id"]
+            excluded_keys = set(exclusions.get(firm_id, []))
+            r = _generate_one(preview, period, batch_dir, excluded_keys)
+            results.append(r)
+        except Exception as e:
+            import traceback
+            results.append({
+                "firm_id": preview.get("firm_id"),
+                "firm_name": preview.get("firm_name"),
+                "ok": False,
+                "error": f"{type(e).__name__}: {e}",
+                "trace": traceback.format_exc(),
+            })
+
+    zip_path = batch_dir / f"GSTR1_Batch_{period}_{timestamp}.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        for r in results:
+            if r.get("ok"):
+                for key in ("json_path", "report_path"):
+                    p = r.get(key)
+                    if p and Path(p).exists():
+                        z.write(p, Path(p).name)
+
+    return jsonify({
+        "ok": True,
+        "period": period,
+        "period_label": period_to_label(period),
+        "batch_dir": str(batch_dir.relative_to(OUTPUT_DIR)).replace("\\", "/"),
+        "zip_url": url_for("download_file", subpath=str(zip_path.relative_to(OUTPUT_DIR)).replace("\\", "/")),
+        "results": [
+            {
+                **{k: v for k, v in r.items() if k not in ("trace",)},
+                "json_url": url_for("download_file", subpath=str(Path(r["json_path"]).relative_to(OUTPUT_DIR)).replace("\\", "/")) if r.get("json_path") else None,
+                "report_url": url_for("download_file", subpath=str(Path(r["report_path"]).relative_to(OUTPUT_DIR)).replace("\\", "/")) if r.get("report_path") else None,
+            }
+            for r in results
+        ],
+    })
+
+
+@app.route("/api/edit_invoice", methods=["POST"])
+def api_edit_invoice():
+    """
+    Edit specific fields (invoice_no, invoice_date, gstin) on an invoice
+    in a previewed batch. Only these three identity fields are editable;
+    tax math and amounts must be fixed in the source sheet.
+
+    Request:
+      {
+        "batch_id": "...",
+        "firm_id": "...",
+        "doc_key": "...",            # original key
+        "field": "invoice_no" | "invoice_date" | "gstin",
+        "value": "..."                # new value
+      }
+
+    Returns the updated invoice (with new key, since key changed) plus
+    any re-validation outcomes (B2B/B2C flip, inter-state flip, etc.).
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    batch_id = data.get("batch_id", "")
+    firm_id = data.get("firm_id", "")
+    doc_key = data.get("doc_key", "")
+    field = data.get("field", "")
+    new_value = (data.get("value") or "").strip()
+
+    if field not in ("invoice_no", "invoice_date", "gstin"):
+        return jsonify({"ok": False, "error": f"Field '{field}' is not editable"}), 400
+
+    state = batch_cache.get(batch_id)
+    if not state:
+        return jsonify({"ok": False, "error": "Batch expired or not found. Please re-upload."}), 400
+
+    # Find the firm's preview
+    target_preview = None
+    for p in state["previews"]:
+        if p.get("ok") and p.get("firm_id") == firm_id:
+            target_preview = p
+            break
+    if not target_preview:
+        return jsonify({"ok": False, "error": "Firm not found in batch"}), 404
+
+    # Find the invoice by current key
+    target_inv = None
+    for inv in target_preview["_invoices"]:
+        if _doc_key_str(inv) == doc_key:
+            target_inv = inv
+            break
+    if not target_inv:
+        return jsonify({"ok": False, "error": "Invoice not found in batch"}), 404
+
+    # Apply edit + re-validate
+    field_warnings = []
+    firm_state_code = target_preview["firm_gstin"][:2]
+
+    if field == "invoice_no":
+        if not new_value:
+            return jsonify({"ok": False, "error": "Invoice number cannot be empty"}), 400
+        target_inv["invoice_no"] = new_value
+        # Re-detect doc_type if user typed a CN- / DN- prefix
+        upper = new_value.upper()
+        if upper.startswith(("CN-", "CN/", "CR-", "CR/", "CREDIT", "C/N")):
+            target_inv["doc_type"] = "C"
+        elif upper.startswith(("DN-", "DN/", "DR-", "DR/", "DEBIT", "D/N")):
+            target_inv["doc_type"] = "D"
+
+    elif field == "invoice_date":
+        # Accept DD-MM-YYYY or YYYY-MM-DD
+        try:
+            new_date = pd.to_datetime(new_value, dayfirst=True).date()
+        except Exception:
+            return jsonify({"ok": False, "error": f"Invalid date format. Use DD-MM-YYYY (e.g. 01-04-2026)."}), 400
+        target_inv["invoice_date"] = new_date
+
+    elif field == "gstin":
+        new_gstin = new_value.upper().replace(" ", "")
+        # Empty GSTIN is allowed → flips to B2C
+        if new_gstin:
+            v = validate_gstin(new_gstin)
+            if not v.get("valid"):
+                return jsonify({
+                    "ok": False,
+                    "error": f"Invalid GSTIN: {v.get('reason', 'checksum failed')}",
+                }), 400
+            target_inv["gstin"] = v["gstin"]
+            target_inv["is_b2b"] = True
+            target_inv["place_of_supply"] = v["gstin"][:2]
+            cust_state = v["gstin"][:2]
+            target_inv["is_interstate"] = (cust_state != firm_state_code)
+            # Update place_of_supply to match new GSTIN's state
+        else:
+            target_inv["gstin"] = ""
+            target_inv["is_b2b"] = False
+            # When dropping the GSTIN, leave POS as-is (from sheet's state code)
+            # but flip interstate to whatever the original state code suggested
+            target_inv["is_interstate"] = False  # default to intra-state
+
+    # Save back to cache
+    batch_cache.update(batch_id, state)
+
+    # Build the updated UI row + new key
+    updated = _serialize_invoice_for_ui(target_inv)
+    return jsonify({
+        "ok": True,
+        "old_key": doc_key,
+        "invoice": updated,
+        "warnings": field_warnings,
+    })
+
+
+@app.route("/healthz")
+def healthz():
+    return {"ok": True, "service": "gstr1-generator"}, 200
+
+
+# ---------- Helpers --------------------------------------------------------
+def _default_period() -> str:
+    now = datetime.now()
+    if now.month == 1:
+        mm, yy = 12, now.year - 1
+    else:
+        mm, yy = now.month - 1, now.year
+    return f"{mm:02d}{yy}"
+
+
+def _process_one(file, firm, period, period_start, period_end, batch_dir):
+    safe_name = "".join(c if c.isalnum() else "_" for c in firm["name"])
+    stamp = datetime.now().strftime("%H%M%S")
+    upload_path = UPLOAD_DIR / f"{safe_name}_{period}_{stamp}_{secure_filename(file.filename)}"
+    file.save(upload_path)
+
+    df = read_sales(str(upload_path))
+
+    out_of_period = 0
+    if "invoice_date" in df.columns:
+        in_period = df["invoice_date"].between(
+            pd.Timestamp(period_start), pd.Timestamp(period_end))
+        out_of_period = int((~in_period).sum())
+
+    firm_gstin = firm["gstin"]
+    if "gstin" not in df.columns:
+        raise ValueError(
+            f"Could not find a 'GSTIN/UIN' column in the sheet. "
+            f"Found columns: {list(df.columns)[:10]}{'...' if len(df.columns) > 10 else ''}. "
+            f"Please ensure the sheet has a column named 'GSTIN/UIN' or 'GSTIN/ UIN'."
+        )
+    self_invoice_rows = int((df["gstin"].str.upper().str.strip() == firm_gstin).sum())
+
+    # Pull existing cache as an external reference (for name-mismatch checks
+    # on customers seen in past months but not in this sheet's master list)
+    cache_dict = {c["gstin"]: c["name"] for c in customers.list_all()}
+    df, exceptions, master = validate_dataframe(df, firm_state_code=firm_gstin[:2],
+                                                external_cache=cache_dict)
+
+    # Persist all valid GSTIN/name pairs to the long-term customer cache.
+    cache_updates = customers.bulk_observe(list(master.items()))
+
+    invoices = consolidate_invoices(df)
+    buckets = classify_invoices(invoices)
+
+    payload = build_gstr1_json(firm_gstin, period, buckets, invoices)
+    json_path = batch_dir / f"GSTR1_{safe_name}_{period}.json"
+    report_path = batch_dir / f"GSTR1_Report_{safe_name}_{period}.xlsx"
+
+    # Write JSON with explicit LF line endings (Windows defaults to CRLF,
+    # which the GST offline tool rejects as "invalid JSON")
+    json_text = json.dumps(payload, indent=2, ensure_ascii=False)
+    with open(json_path, "wb") as f:
+        f.write(json_text.encode("utf-8"))
+
+    build_report(firm["name"], firm_gstin, period, invoices, buckets,
+                 exceptions, str(report_path))
+
+    return {
+        "ok": True,
+        "firm_id": firm["gstin"],
+        "firm_name": firm["name"],
+        "firm_gstin": firm_gstin,
+        "stats": {
+            "rows": len(df), "invoices": len(invoices),
+            "b2b": len(buckets["b2b"]), "b2cl": len(buckets["b2cl"]),
+            "b2cs": len(buckets["b2cs"]), "exceptions": len(exceptions),
+            "out_of_period_rows": out_of_period,
+            "self_invoice_rows": self_invoice_rows,
+            "customers_cached": cache_updates,
+        },
+        "warnings": _collect_warnings(out_of_period, self_invoice_rows, len(df)),
+        "json_path": str(json_path),
+        "report_path": str(report_path),
+    }
+
+
+def _doc_key_str(doc) -> str:
+    """Stable string key for a consolidated document, used for exclusion."""
+    date_part = doc["invoice_date"].isoformat() if doc.get("invoice_date") else "NULL"
+    return f"{doc.get('gstin','')}|{doc.get('invoice_no','')}|{date_part}|{doc.get('doc_type','INV')}"
+
+
+def _serialize_invoice_for_ui(doc) -> dict:
+    """Convert a consolidated doc to a UI-friendly dict (no defaultdicts, no Timestamps)."""
+    return {
+        "key": _doc_key_str(doc),
+        "doc_type": doc.get("doc_type", "INV"),
+        "gstin": doc.get("gstin", ""),
+        "customer_name": doc.get("customer_name", ""),
+        "invoice_no": doc.get("invoice_no", ""),
+        "invoice_date": doc["invoice_date"].strftime("%d-%m-%Y") if doc.get("invoice_date") else "",
+        "is_b2b": bool(doc.get("is_b2b")),
+        "is_interstate": bool(doc.get("is_interstate")),
+        "place_of_supply": doc.get("place_of_supply", ""),
+        "items_count": len(doc.get("items", [])),
+        "taxable_value": float(doc.get("invoice_total_taxable", 0)),
+        "total_tax": float(doc.get("invoice_total_tax", 0)),
+        "invoice_value": float(doc.get("invoice_value", 0)),
+        "orig_invoice_no": doc.get("orig_invoice_no", "") or "",
+    }
+
+
+def _preview_one(file, firm, period, period_start, period_end, timestamp):
+    """Parse a single sheet, run validations, return a previewable structure."""
+    safe_name = "".join(c if c.isalnum() else "_" for c in firm["name"])
+    stamp = datetime.now().strftime("%H%M%S")
+    upload_path = UPLOAD_DIR / f"{safe_name}_{period}_{stamp}_{secure_filename(file.filename)}"
+    file.save(upload_path)
+
+    df = read_sales(str(upload_path))
+
+    out_of_period = 0
+    if "invoice_date" in df.columns:
+        in_period = df["invoice_date"].between(
+            pd.Timestamp(period_start), pd.Timestamp(period_end))
+        out_of_period = int((~in_period).sum())
+
+    firm_gstin = firm["gstin"]
+    if "gstin" not in df.columns:
+        raise ValueError(
+            f"Could not find a 'GSTIN/UIN' column in the sheet. "
+            f"Found columns: {list(df.columns)[:10]}{'...' if len(df.columns) > 10 else ''}. "
+            f"Please ensure the sheet has a column named 'GSTIN/UIN' or 'GSTIN/ UIN'."
+        )
+    self_invoice_rows = int((df["gstin"].str.upper().str.strip() == firm_gstin).sum())
+
+    cache_dict = {c["gstin"]: c["name"] for c in customers.list_all()}
+    df_validated, exceptions, master = validate_dataframe(
+        df, firm_state_code=firm_gstin[:2], external_cache=cache_dict)
+
+    cache_updates = customers.bulk_observe(list(master.items()))
+
+    # Pre-flight checks (run on the validated DataFrame)
+    preflight = run_all_preflight_checks(df_validated, firm_state_code=firm_gstin[:2])
+
+    invoices = consolidate_invoices(df_validated)
+    buckets = classify_invoices(invoices)
+
+    invoices_preview = [_serialize_invoice_for_ui(d) for d in invoices]
+
+    # Build a compact summary of preflight (top 50 issues to avoid huge UI payloads)
+    preflight_summary = {
+        "totals": preflight["totals"],
+        "errors": preflight["errors"][:50],
+        "warnings": preflight["warnings"][:50],
+    }
+
+    return {
+        "ok": True,
+        "firm_id": firm["gstin"],
+        "firm_name": firm["name"],
+        "firm_gstin": firm_gstin,
+        "safe_name": safe_name,
+        "stats": {
+            "rows": len(df_validated),
+            "invoices": len([d for d in invoices if d.get("doc_type", "INV") == "INV"]),
+            "credit_notes": len([d for d in invoices if d.get("doc_type") == "C"]),
+            "debit_notes": len([d for d in invoices if d.get("doc_type") == "D"]),
+            "b2b": len(buckets["b2b"]),
+            "b2cl": len(buckets["b2cl"]),
+            "b2cs": len(buckets["b2cs"]),
+            "cdnr": len(buckets.get("cdnr", [])),
+            "cdnur": len(buckets.get("cdnur", [])),
+            "exceptions": len(exceptions),
+            "out_of_period_rows": out_of_period,
+            "self_invoice_rows": self_invoice_rows,
+            "customers_cached": cache_updates,
+        },
+        "warnings": _collect_warnings(out_of_period, self_invoice_rows, len(df)),
+        "preflight_summary": preflight_summary,
+        "invoices_preview": invoices_preview,
+        # Stored in cache (not returned to UI):
+        "_invoices": invoices,
+        "_exceptions": exceptions,
+    }
+
+
+def _generate_one(preview, period, batch_dir, excluded_keys: set):
+    """Generate JSON + Excel for one firm using cached preview, applying exclusions."""
+    firm_name = preview["firm_name"]
+    firm_gstin = preview["firm_gstin"]
+    safe_name = preview["safe_name"]
+
+    invoices_all = preview["_invoices"]
+    excluded_count = 0
+    excluded_list = []
+    if excluded_keys:
+        kept = []
+        for d in invoices_all:
+            if _doc_key_str(d) in excluded_keys:
+                excluded_count += 1
+                excluded_list.append(d)
+            else:
+                kept.append(d)
+        invoices = kept
+    else:
+        invoices = invoices_all
+
+    buckets = classify_invoices(invoices)
+    payload = build_gstr1_json(firm_gstin, period, buckets, invoices)
+    json_path = batch_dir / f"GSTR1_{safe_name}_{period}.json"
+    report_path = batch_dir / f"GSTR1_Report_{safe_name}_{period}.xlsx"
+
+    json_text = json.dumps(payload, indent=2, ensure_ascii=False)
+    with open(json_path, "wb") as f:
+        f.write(json_text.encode("utf-8"))
+
+    build_report(firm_name, firm_gstin, period, invoices, buckets,
+                 preview["_exceptions"], str(report_path),
+                 excluded_invoices=excluded_list)
+
+    return {
+        "ok": True,
+        "firm_id": preview["firm_id"],
+        "firm_name": firm_name,
+        "firm_gstin": firm_gstin,
+        "stats": {
+            "invoices": len([d for d in invoices if d.get("doc_type", "INV") == "INV"]),
+            "credit_notes": len([d for d in invoices if d.get("doc_type") == "C"]),
+            "debit_notes": len([d for d in invoices if d.get("doc_type") == "D"]),
+            "b2b": len(buckets["b2b"]),
+            "b2cl": len(buckets["b2cl"]),
+            "b2cs": len(buckets["b2cs"]),
+            "cdnr": len(buckets.get("cdnr", [])),
+            "cdnur": len(buckets.get("cdnur", [])),
+            "excluded": excluded_count,
+        },
+        "json_path": str(json_path),
+        "report_path": str(report_path),
+    }
+
+
+def _collect_warnings(out_of_period, self_invoice_rows, total_rows=0) -> list:
+    w = []
+    if out_of_period:
+        # If MOST rows are out-of-period, this is almost certainly a wrong-period mistake
+        if total_rows > 0 and out_of_period >= total_rows * 0.5:
+            w.append(
+                f"⚠️ CRITICAL: {out_of_period} of {total_rows} invoices ({out_of_period * 100 // total_rows}%) "
+                f"are dated OUTSIDE the return period you selected. "
+                f"You probably picked the wrong month/year. The GST portal will REJECT all out-of-period invoices. "
+                f"Click 'Back to upload' and choose the correct return period."
+            )
+        else:
+            w.append(f"{out_of_period} rows have invoice dates outside the declared period")
+    if self_invoice_rows:
+        w.append(f"{self_invoice_rows} rows have customer GSTIN equal to firm GSTIN (self-invoice — likely data entry error)")
+    return w
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5050))
+    host = os.environ.get("HOST", "127.0.0.1")
+    app.run(host=host, port=port, debug=False)

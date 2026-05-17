@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Customers · Anyah &amp; Co.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="{{ url_for('index') }}" class="brand">
+      <span class="brand-mark"></span>
+      <div class="brand-title">ANYAH &amp; CO.</div>
+    </a>
+    <nav>
+      <a href="{{ url_for('index') }}" class="nav-link">Generate</a>
+      <a href="{{ url_for('firms_page') }}" class="nav-link">Firms</a>
+      <a href="{{ url_for('customers_page') }}" class="nav-link active">Customers</a>
+      <a href="{{ url_for('files_page') }}" class="nav-link">Files</a>
+      <a href="{{ url_for('logout') }}" class="nav-link nav-logout">Sign out</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="step">
+    <div class="step-head">
+      <h2>Customer cache</h2>
+      <span class="step-aside">{{ customers|length }} customer{{ 's' if customers|length != 1 else '' }} · auto-fills name from GSTIN</span>
+    </div>
+
+    <div class="cache-info">
+      <p>Every time you process a sales sheet, valid customer GSTINs and names are saved here. When you type a known GSTIN anywhere in the tool, the name auto-fills. The cache learns over time — the more you use the tool, the smarter it gets.</p>
+    </div>
+
+    <div class="cache-search">
+      <input type="text" id="cache-search" placeholder="Search by GSTIN or customer name…" class="search-input">
+    </div>
+
+    {% if customers %}
+      <div class="cache-list" id="cache-list">
+        {% for c in customers %}
+          <div class="cache-row" data-gstin="{{ c.gstin }}" data-search="{{ (c.gstin + ' ' + c.name)|lower }}">
+            <div class="cache-row-main">
+              <div class="cache-row-name" data-name>{{ c.name }}</div>
+              {% if c.variants %}
+                <div class="cache-row-variants">
+                  {% for v in c.variants[:3] %}<span class="variant-pill">{{ v }}</span>{% endfor %}
+                  {% if c.variants|length > 3 %}<span class="variant-pill">+{{ c.variants|length - 3 }} more</span>{% endif %}
+                </div>
+              {% endif %}
+            </div>
+            <div class="cache-row-gstin">{{ c.gstin }}</div>
+            <div class="cache-row-meta">
+              <span title="Times seen across all sheets">{{ c.occurrence_count }}× seen</span>
+            </div>
+            <div class="cache-row-actions">
+              <button class="btn-ghost" data-action="edit">Edit</button>
+              <button class="btn-ghost btn-danger" data-action="delete">Remove</button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <p>No customers cached yet.</p>
+        <p style="margin-top:8px;font-size:13px;color:var(--ink-3);">Process a sales sheet on the <a href="{{ url_for('index') }}">Generate page</a> and customer GSTINs will appear here automatically.</p>
+      </div>
+    {% endif %}
+
+    {% if customers %}
+    <div class="cache-actions">
+      <button class="btn-ghost btn-danger" id="clear-all-customers">Clear entire cache</button>
+      <span class="action-hint">Removes all cached customers. Existing sheets will rebuild it next time.</span>
+    </div>
+    {% endif %}
+
+  </section>
+
+</main>
+
+<script src="{{ url_for('static', filename='customers.js') }}"></script>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <span class="footer-mark">A&amp;Co.</span>
+    <span class="footer-text">ANYAH &amp; CO. — Internal Use</span>
+    <span class="footer-meta">Confidential. Not for distribution.</span>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Firms · Anyah &amp; Co.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="{{ url_for('index') }}" class="brand">
+      <span class="brand-mark"></span>
+      <div class="brand-title">ANYAH &amp; CO.</div>
+    </a>
+    <nav>
+      <a href="{{ url_for('index') }}" class="nav-link">Generate</a>
+      <a href="{{ url_for('firms_page') }}" class="nav-link active">Firms</a>
+      <a href="{{ url_for('customers_page') }}" class="nav-link">Customers</a>
+      <a href="{{ url_for('files_page') }}" class="nav-link">Files</a>
+      <a href="{{ url_for('logout') }}" class="nav-link nav-logout">Sign out</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="step">
+    <div class="step-head">
+      <span class="step-num">+</span>
+      <h2>Add firm</h2>
+    </div>
+
+    <form id="add-firm-form" class="firm-form">
+      <div class="form-grid">
+        <label class="form-field">
+          <span>Display name</span>
+          <input type="text" name="name" required placeholder="e.g. Acme Print Services">
+        </label>
+        <label class="form-field">
+          <span>Firm GSTIN</span>
+          <input type="text" name="gstin" required maxlength="15"
+                 placeholder="29AAAAA0000A1Z5"
+                 class="mono-input gstin-input">
+          <small class="gstin-hint" id="gstin-hint"></small>
+        </label>
+        <label class="form-field full">
+          <span>Legal name <em>(optional)</em></span>
+          <input type="text" name="legal_name" placeholder="As per GST registration">
+        </label>
+      </div>
+      <button type="submit" class="btn-primary">Save firm</button>
+    </form>
+  </section>
+
+  <section class="step">
+    <div class="step-head">
+      <h2>Saved firms</h2>
+      <span class="step-aside">{{ firms|length }} firm{{ 's' if firms|length != 1 else '' }}</span>
+    </div>
+
+    {% if firms %}
+      <div class="firm-list">
+        {% for firm in firms %}
+          <div class="firm-row" data-firm-id="{{ firm.gstin }}">
+            <div class="firm-row-main">
+              <div class="firm-row-name">{{ firm.name }}</div>
+              {% if firm.legal_name %}
+                <div class="firm-row-legal">{{ firm.legal_name }}</div>
+              {% endif %}
+            </div>
+            <div class="firm-row-gstin">{{ firm.gstin }}</div>
+            <div class="firm-row-state">{{ firm.state_code }}</div>
+            <div class="firm-row-actions">
+              <button class="btn-ghost btn-danger" data-action="delete">Remove</button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <p>No firms saved yet.</p>
+      </div>
+    {% endif %}
+  </section>
+</main>
+
+<script src="{{ url_for('static', filename='firms.js') }}"></script>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <span class="footer-mark">A&amp;Co.</span>
+    <span class="footer-text">ANYAH &amp; CO. — Internal Use</span>
+    <span class="footer-meta">Confidential. Not for distribution.</span>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anyah &amp; Co. — GSTR-1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="{{ url_for('index') }}" class="brand">
+      <span class="brand-mark"></span>
+      <div class="brand-title">ANYAH &amp; CO.</div>
+    </a>
+    <nav>
+      <a href="{{ url_for('index') }}" class="nav-link active">Generate</a>
+      <a href="{{ url_for('firms_page') }}" class="nav-link">Firms</a>
+      <a href="{{ url_for('customers_page') }}" class="nav-link">Customers</a>
+      <a href="{{ url_for('files_page') }}" class="nav-link">Files</a>
+      <a href="{{ url_for('logout') }}" class="nav-link nav-logout">Sign out</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="step">
+    <div class="step-head">
+      <span class="step-num">01</span>
+      <h2>Return period</h2>
+    </div>
+    <div class="period-row">
+      <select id="period-month" class="period-select"></select>
+      <select id="period-year" class="period-select period-select-year"></select>
+      <span id="period-feedback" class="period-feedback"></span>
+      <input type="hidden" id="period" value="{{ default_period }}">
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="step-head">
+      <span class="step-num">02</span>
+      <h2>Drop sales registers</h2>
+      <span class="step-aside">One file per firm. Both can be processed in one batch.</span>
+    </div>
+
+    {% if not firms %}
+      <div class="empty-firms">
+        <p>No firms saved yet. Add a firm first to begin.</p>
+        <a href="{{ url_for('firms_page') }}" class="btn-primary">Add a firm →</a>
+      </div>
+    {% else %}
+      <div class="firm-grid">
+        {% for firm in firms %}
+        <div class="firm-card" data-firm-id="{{ firm.gstin }}">
+          <div class="firm-header">
+            <div class="firm-name">{{ firm.name }}</div>
+            <div class="firm-gstin">{{ firm.gstin }}</div>
+          </div>
+
+          <div class="dropzone" data-target="file-{{ loop.index }}">
+            <input type="file" id="file-{{ loop.index }}"
+                   data-firm-id="{{ firm.gstin }}"
+                   accept=".xlsx,.xls,.csv,.tsv" hidden>
+            <div class="dropzone-content">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/>
+              </svg>
+              <div class="dropzone-text">
+                <strong>Drop sales sheet</strong>
+                <span>or click to browse</span>
+              </div>
+              <div class="file-preview" hidden>
+                <span class="file-icon">▤</span>
+                <span class="file-name"></span>
+                <button class="file-clear" type="button">×</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="firm-status">
+            <span class="status-dot"></span>
+            <span class="status-text">Awaiting file</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  {% if firms %}
+  <section class="step action-step">
+    <button id="process-btn" class="btn-primary btn-process" disabled>
+      Review invoices
+    </button>
+    <span class="action-hint">Drop at least one file to enable</span>
+  </section>
+  {% endif %}
+
+  <!-- Review screen: shown after preview, before generate -->
+  <section id="review-section" hidden>
+    <div class="step-head">
+      <span class="step-num">03</span>
+      <h2>Review &amp; Generate</h2>
+      <span class="step-aside" id="review-summary"></span>
+    </div>
+    <div id="review-firms"></div>
+    <div class="review-actions">
+      <button id="back-btn" class="btn-ghost">← Back to upload</button>
+      <button id="generate-btn" class="btn-primary">Generate JSON & Reports</button>
+      <span class="action-hint" id="review-hint"></span>
+    </div>
+  </section>
+
+  <section id="results-section" hidden>
+    <div class="step-head">
+      <span class="step-num">04</span>
+      <h2>Results</h2>
+      <a id="download-zip" href="#" class="btn-ghost" hidden>Download all (.zip)</a>
+    </div>
+    <div id="results"></div>
+  </section>
+
+</main>
+
+<div id="overlay" class="overlay" style="display: none;">
+  <div class="overlay-card">
+    <div class="spinner"></div>
+    <div class="overlay-text">Processing…</div>
+    <div class="overlay-sub" id="overlay-sub">Reading sheets, validating GSTINs, building JSON</div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <span class="footer-mark">A&amp;Co.</span>
+    <span class="footer-text">ANYAH &amp; CO. — Internal Use</span>
+    <span class="footer-meta">Confidential. Not for distribution.</span>
+  </div>
+</footer>
+</body>
+</html>

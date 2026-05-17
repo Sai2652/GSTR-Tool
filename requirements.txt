@@ -1,0 +1,7 @@
+flask
+gunicorn
+pandas
+openpyxl
+rapidfuzz
+xlrd
+bcrypt

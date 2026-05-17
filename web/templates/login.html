@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in · Anyah &amp; Co.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="login-body">
+
+<div class="login-shell">
+  <div class="login-card">
+    <div class="login-brand">
+      <span class="brand-mark"></span>
+      <div class="brand-title">ANYAH &amp; CO.</div>
+      <div class="login-tagline">Internal Tool</div>
+    </div>
+
+    {% with messages = get_flashed_messages(category_filter=['error']) %}
+      {% if messages %}
+        <div class="login-error">
+          {% for m in messages %}<div>{{ m }}</div>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" class="login-form">
+      <label class="form-field">
+        <span>Username</span>
+        <input type="text" name="username" autocomplete="username" required autofocus>
+      </label>
+      <label class="form-field">
+        <span>Password</span>
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit" class="btn-primary btn-block">Sign in</button>
+    </form>
+  </div>
+  <div class="login-foot">
+    Authorised access only · GST data is confidential
+  </div>
+</div>
+
+</body>
+</html>

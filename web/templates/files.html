@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Files · Anyah &amp; Co.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="{{ url_for('index') }}" class="brand">
+      <span class="brand-mark"></span>
+      <div class="brand-title">ANYAH &amp; CO.</div>
+    </a>
+    <nav>
+      <a href="{{ url_for('index') }}" class="nav-link">Generate</a>
+      <a href="{{ url_for('firms_page') }}" class="nav-link">Firms</a>
+      <a href="{{ url_for('customers_page') }}" class="nav-link">Customers</a>
+      <a href="{{ url_for('files_page') }}" class="nav-link active">Files</a>
+      <a href="{{ url_for('logout') }}" class="nav-link nav-logout">Sign out</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="step">
+    <div class="step-head">
+      <h2>Storage</h2>
+      <span class="step-aside">Files persist until manually cleared.</span>
+    </div>
+
+    <div class="storage-grid">
+      <div class="storage-card">
+        <div class="storage-head">
+          <div>
+            <div class="storage-label">Uploads</div>
+            <div class="storage-stat"><span class="storage-num">{{ summary.uploads.count }}</span> files · <span>{{ summary.uploads.total_human }}</span></div>
+          </div>
+          <button class="btn-ghost btn-danger" data-clear="uploads"
+                  {% if summary.uploads.count == 0 %}disabled{% endif %}>
+            Clear all
+          </button>
+        </div>
+        <div class="storage-list">
+          {% for f in summary.uploads.files[:50] %}
+            <div class="storage-row" data-target="uploads" data-path="{{ f.path }}">
+              <span class="storage-name">{{ f.name }}</span>
+              <span class="storage-meta">{{ f.size_human }} · {{ f.modified }}</span>
+              <button class="storage-delete" data-action="delete-one" data-target="uploads" data-path="{{ f.path }}">×</button>
+            </div>
+          {% else %}
+            <div class="storage-empty">No uploads stored.</div>
+          {% endfor %}
+          {% if summary.uploads.count > 50 %}
+            <div class="storage-empty">… and {{ summary.uploads.count - 50 }} more</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="storage-card">
+        <div class="storage-head">
+          <div>
+            <div class="storage-label">Generated outputs</div>
+            <div class="storage-stat"><span class="storage-num">{{ summary.outputs.count }}</span> files · <span>{{ summary.outputs.total_human }}</span></div>
+          </div>
+          <button class="btn-ghost btn-danger" data-clear="outputs"
+                  {% if summary.outputs.count == 0 %}disabled{% endif %}>
+            Clear all
+          </button>
+        </div>
+        <div class="storage-list">
+          {% for f in summary.outputs.files[:50] %}
+            <div class="storage-row" data-target="outputs" data-path="{{ f.path }}">
+              <span class="storage-name">{{ f.name }}</span>
+              <span class="storage-meta">{{ f.size_human }} · {{ f.modified }}</span>
+              <button class="storage-delete" data-action="delete-one" data-target="outputs" data-path="{{ f.path }}">×</button>
+            </div>
+          {% else %}
+            <div class="storage-empty">No outputs stored.</div>
+          {% endfor %}
+          {% if summary.outputs.count > 50 %}
+            <div class="storage-empty">… and {{ summary.outputs.count - 50 }} more</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="storage-actions">
+      <button class="btn-ghost btn-danger" data-clear="all">Clear everything</button>
+      <span class="action-hint">This deletes all uploaded sales sheets and all generated JSONs / reports. Firm profiles are not affected.</span>
+    </div>
+  </section>
+
+</main>
+
+<script src="{{ url_for('static', filename='files.js') }}"></script>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <span class="footer-mark">A&amp;Co.</span>
+    <span class="footer-text">ANYAH &amp; CO. — Internal Use</span>
+    <span class="footer-meta">Confidential. Not for distribution.</span>
+  </div>
+</footer>
+</body>
+</html>

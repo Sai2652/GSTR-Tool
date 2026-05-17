@@ -1,0 +1,42 @@
+# Render.com deployment blueprint
+# ================================
+# This config deploys to the FREE tier. Important caveats:
+#   - Free instances spin down after 15 min of inactivity (~30 sec wake-up)
+#   - File system is EPHEMERAL — gets wiped on restart/redeploy
+#   - To persist firm profiles across restarts, upgrade to Starter plan
+#     ($7/mo) and uncomment the disk block below
+#
+# After deploy, set these env vars manually in the Render dashboard:
+#   APP_USERNAME       — your login username
+#   APP_PASSWORD_HASH  — bcrypt hash (generate with scripts/hash_password.py)
+
+services:
+  - type: web
+    name: gstr1-generator
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: cd web && gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 2
+    healthCheckPath: /healthz
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: APP_USERNAME
+        sync: false
+      - key: APP_PASSWORD_HASH
+        sync: false
+    # ----------------------------------------------------------------------
+    # PAID TIER (Starter $7/mo): uncomment for persistent storage.
+    # Without this, firm profiles and uploaded files are LOST on restart.
+    # ----------------------------------------------------------------------
+    # plan: starter
+    # disk:
+    #   name: gstr1-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # extra envVars:
+    #   - key: DATA_ROOT
+    #     value: /var/data
