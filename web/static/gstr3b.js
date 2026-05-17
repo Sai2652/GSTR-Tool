@@ -56,6 +56,8 @@
   function checkStep1() {
     if (state.firmId && /^\d{6}$/.test(state.period)) {
       enableStep(2);
+      // Auto-pull GSTR-1 output liability if available
+      pullGstr1();
     } else {
       [2, 3, 4, 5, 6].forEach(disableStep);
     }
