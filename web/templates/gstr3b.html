@@ -1,0 +1,227 @@
+{% extends "_base.html" if false else "/dev/null" %}
+<!-- If your project doesn't use a _base.html, the head/nav blocks are inlined below. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSTR-3B Liability Computation</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+<style>
+  /* --- Page-specific styles --- */
+  .g3-container { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
+  .g3-step { background: #fff; border: 1px solid #e2e2ea; border-radius: 10px; padding: 20px 22px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .g3-step h2 { margin: 0 0 14px; font-size: 16px; color: #001441; display: flex; align-items: center; gap: 10px; }
+  .g3-step h2 .num { background: #6958C2; color: #fff; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  .g3-step.disabled { opacity: 0.5; pointer-events: none; }
+  .g3-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  .g3-row > * { flex: 1; min-width: 180px; }
+  .g3-label { font-size: 11px; color: #555; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; display: block; }
+  .g3-input, .g3-select { width: 100%; padding: 8px 12px; border: 1px solid #d0d0d8; border-radius: 6px; font-size: 14px; background: #fff; color: #1a1a2e; }
+  .g3-input:focus, .g3-select:focus { outline: none; border-color: #6958C2; box-shadow: 0 0 0 3px rgba(105,88,194,0.15); }
+  .g3-input[type=number] { text-align: right; font-family: 'IBM Plex Mono', monospace; }
+  .g3-btn { padding: 9px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid; transition: all .15s; }
+  .g3-btn-primary { background: #6958C2; color: #fff; border-color: #6958C2; }
+  .g3-btn-primary:hover { background: #4d3fa0; border-color: #4d3fa0; }
+  .g3-btn-primary:disabled { background: #b6acd9; border-color: #b6acd9; cursor: not-allowed; }
+  .g3-btn-secondary { background: #fff; color: #6958C2; border-color: #d0c9e8; }
+  .g3-btn-secondary:hover { background: #f7f5fc; }
+  .g3-btn-success { background: #15803d; color: #fff; border-color: #15803d; }
+  .g3-btn-success:hover { background: #126b32; }
+  .g3-file-drop { border: 2px dashed #d0c9e8; border-radius: 8px; padding: 24px; text-align: center; background: #faf9fc; cursor: pointer; transition: all .15s; }
+  .g3-file-drop:hover, .g3-file-drop.drag { border-color: #6958C2; background: #f0ebfa; }
+  .g3-file-drop .label { color: #6958C2; font-weight: 600; font-size: 14px; }
+  .g3-file-drop .hint { color: #777; font-size: 12px; margin-top: 4px; }
+  .g3-file-name { display: inline-block; background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-top: 8px; }
+  .g3-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+  .g3-table th { background: #f7f5fc; color: #001441; font-size: 11px; font-weight: 700; padding: 9px 10px; text-align: right; border-bottom: 2px solid #6958C2; text-transform: uppercase; letter-spacing: .3px; }
+  .g3-table th:first-child { text-align: left; }
+  .g3-table td { padding: 8px 10px; border-bottom: 1px solid #f0ecf7; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  .g3-table td:first-child { text-align: left; font-family: inherit; font-size: 13px; }
+  .g3-table tr.total td { font-weight: 700; background: #f7f5fc; color: #001441; }
+  .g3-table .small-input { width: 100px; padding: 4px 6px; font-size: 12px; text-align: right; font-family: 'IBM Plex Mono', monospace; border: 1px solid #d0d0d8; border-radius: 4px; }
+  .g3-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+  .g3-pill-good { background: #dcfce7; color: #15803d; }
+  .g3-pill-warn { background: #fef3c7; color: #92400e; }
+  .g3-pill-bad { background: #fee2e2; color: #b91c1c; }
+  .g3-info { background: #f0f9ff; border-left: 3px solid #0891b2; padding: 10px 14px; border-radius: 4px; color: #075985; font-size: 13px; margin: 10px 0; }
+  .g3-warn { background: #fffbeb; border-left: 3px solid #f59e0b; padding: 10px 14px; border-radius: 4px; color: #92400e; font-size: 13px; margin: 10px 0; }
+  .g3-error { background: #fef2f2; border-left: 3px solid #dc2626; padding: 10px 14px; border-radius: 4px; color: #991b1b; font-size: 13px; margin: 10px 0; }
+  .g3-grid4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+  .g3-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #555; cursor: pointer; }
+  .g3-toggle input { cursor: pointer; }
+  .g3-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: g3spin 0.6s linear infinite; margin-right: 6px; vertical-align: middle; }
+  @keyframes g3spin { to { transform: rotate(360deg); } }
+  .g3-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  .g3-page-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 0 22px; border-bottom: 1px solid #e2e2ea; margin-bottom: 24px; }
+  .g3-page-header h1 { margin: 0; font-size: 22px; color: #001441; font-weight: 700; }
+  .g3-page-header .crumb { font-size: 12px; color: #777; margin-top: 2px; }
+  .g3-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px; }
+  .g3-kpi { background: #f7f5fc; border: 1px solid #e9e4f5; border-radius: 8px; padding: 14px; }
+  .g3-kpi .v { font-size: 22px; font-weight: 700; color: #001441; font-family: 'IBM Plex Mono', monospace; }
+  .g3-kpi .l { font-size: 11px; color: #555; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; margin-top: 4px; }
+  .g3-kpi.cash { background: #fef3c7; border-color: #fde68a; }
+  .g3-kpi.cash .v { color: #92400e; }
+  .g3-kpi.closing { background: #dcfce7; border-color: #bbf7d0; }
+  .g3-kpi.closing .v { color: #15803d; }
+</style>
+</head>
+<body>
+<!-- ============================================================
+     If your existing templates use a shared nav include, replace
+     the next block with your nav partial. The links below mirror
+     what should appear on every page.
+     ============================================================ -->
+<nav class="topnav">
+  <div class="nav-inner" style="max-width:1100px;margin:0 auto;padding:12px 20px;display:flex;gap:18px;align-items:center;">
+    <a href="{{ url_for('index') }}" style="font-weight:700;color:#001441;text-decoration:none;">GSTR Tool</a>
+    <a href="{{ url_for('index') }}">GSTR-1</a>
+    <a href="{{ url_for('firms_page') }}">Firms</a>
+    <a href="{{ url_for('files_page') }}">Files</a>
+    <a href="{{ url_for('gstr3b_page') }}" style="color:#6958C2;font-weight:700;">GSTR-3B</a>
+    <span style="flex:1"></span>
+    {% if user %}<span style="color:#555;font-size:12px;">{{ user }}</span>
+    <a href="{{ url_for('logout') }}" style="color:#dc2626;font-size:12px;">Logout</a>{% endif %}
+  </div>
+</nav>
+
+<div class="g3-container">
+  <div class="g3-page-header">
+    <div>
+      <h1>GSTR-3B Liability Computation</h1>
+      <div class="crumb">Upload GSTR-2B → review ITC → enter output liability & opening balance → generate Excel</div>
+    </div>
+  </div>
+
+  <!-- STEP 1: Firm + Period -->
+  <div class="g3-step" id="step-1">
+    <h2><span class="num">1</span> Firm & Return Period</h2>
+    <div class="g3-row">
+      <div>
+        <label class="g3-label">Firm</label>
+        <select class="g3-select" id="firm-select">
+          <option value="">— Select firm —</option>
+          {% for f in firms %}
+          <option value="{{ f.id }}" data-name="{{ f.name }}" data-gstin="{{ f.gstin }}">{{ f.name }} ({{ f.gstin }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="g3-label">Period (MMYYYY)</label>
+        <input type="text" class="g3-input" id="period-input" value="{{ default_period }}" placeholder="e.g., 042026" maxlength="6">
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: Upload GSTR-2B -->
+  <div class="g3-step disabled" id="step-2">
+    <h2><span class="num">2</span> Upload GSTR-2B Excel</h2>
+    <div class="g3-file-drop" id="file-drop">
+      <input type="file" id="file-input" accept=".xlsx,.xls" style="display:none;">
+      <div class="label">Click or drag the GSTR-2B .xlsx file here</div>
+      <div class="hint">Download from GST portal → Returns → GSTR-2B → Download Excel</div>
+      <div id="file-name-box"></div>
+    </div>
+    <div id="parse-status" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- STEP 3: ITC Review with eligibility toggles -->
+  <div class="g3-step disabled" id="step-3">
+    <h2><span class="num">3</span> Review ITC from GSTR-2B</h2>
+    <div class="g3-info">
+      Untick any category you do <em>not</em> want to claim (e.g., if you've classified it as blocked credit under Section 17(5)). The unticked amounts move to the Reversal row.
+    </div>
+    <div id="itc-review"></div>
+  </div>
+
+  <!-- STEP 4: Output liability -->
+  <div class="g3-step disabled" id="step-4">
+    <h2><span class="num">4</span> Output Tax Liability (Table 3.1)</h2>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
+      <button class="g3-btn g3-btn-secondary" id="pull-gstr1-btn">↓ Pull from saved GSTR-1</button>
+      <span id="pull-status" style="font-size:12px;color:#777;"></span>
+    </div>
+    <div class="g3-grid4">
+      <div>
+        <label class="g3-label">IGST Output (₹)</label>
+        <input type="number" step="0.01" class="g3-input" id="out-igst" value="0">
+      </div>
+      <div>
+        <label class="g3-label">CGST Output (₹)</label>
+        <input type="number" step="0.01" class="g3-input" id="out-cgst" value="0">
+      </div>
+      <div>
+        <label class="g3-label">SGST Output (₹)</label>
+        <input type="number" step="0.01" class="g3-input" id="out-sgst" value="0">
+      </div>
+      <div>
+        <label class="g3-label">Cess Output (₹)</label>
+        <input type="number" step="0.01" class="g3-input" id="out-cess" value="0">
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 5: Opening balance -->
+  <div class="g3-step disabled" id="step-5">
+    <h2><span class="num">5</span> Opening Electronic Credit Ledger Balance</h2>
+    <div class="g3-info">
+      Check your GST portal → Services → Ledgers → Electronic Credit Ledger for the opening balance on the first day of the return period.
+    </div>
+    <div class="g3-grid4">
+      <div>
+        <label class="g3-label">IGST Opening (₹)</label>
+        <input type="number" step="0.01" class="g3-input" id="open-igst" value="0">
+      </div>
+      <div>
+        <label class="g3-label">CGST Opening (₹)</label>
+        <input type="number" step="0.01" class="g3-input" id="open-cgst" value="0">
+      </div>
+      <div>
+        <label class="g3-label">SGST Opening (₹)</label>
+        <input type="number" step="0.01" class="g3-input" id="open-sgst" value="0">
+      </div>
+      <div>
+        <label class="g3-label">Cess Opening (₹)</label>
+        <input type="number" step="0.01" class="g3-input" id="open-cess" value="0">
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 6: Compute & download -->
+  <div class="g3-step disabled" id="step-6">
+    <h2><span class="num">6</span> Compute Liability</h2>
+    <div class="g3-row" style="margin-bottom:14px;">
+      <div style="flex:0 0 240px;">
+        <label class="g3-label">IGST Cross-utilisation order</label>
+        <select class="g3-select" id="cross-order">
+          <option value="cgst_first">CGST first, then SGST (default)</option>
+          <option value="sgst_first">SGST first, then CGST</option>
+        </select>
+      </div>
+    </div>
+    <div class="g3-actions">
+      <button class="g3-btn g3-btn-primary" id="compute-btn">Compute Set-off</button>
+    </div>
+
+    <div id="compute-result" style="display:none;margin-top:18px;">
+      <div class="g3-summary-grid">
+        <div class="g3-kpi"><div class="v" id="kpi-output">₹0</div><div class="l">Total Output Tax</div></div>
+        <div class="g3-kpi"><div class="v" id="kpi-credit">₹0</div><div class="l">Total Credit Used</div></div>
+        <div class="g3-kpi cash"><div class="v" id="kpi-cash">₹0</div><div class="l">Cash Payable</div></div>
+        <div class="g3-kpi closing"><div class="v" id="kpi-closing">₹0</div><div class="l">Closing Credit</div></div>
+      </div>
+      <h3 style="margin:20px 0 8px;font-size:13px;color:#001441;">Set-off Trail</h3>
+      <table class="g3-table">
+        <thead><tr><th>From → To</th><th>IGST</th><th>CGST</th><th>SGST</th><th>Cess</th></tr></thead>
+        <tbody id="setoff-trail"></tbody>
+      </table>
+      <div class="g3-actions" style="margin-top:18px;">
+        <button class="g3-btn g3-btn-success" id="download-btn">⬇ Download GSTR-3B Excel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='gstr3b.js') }}"></script>
+</body>
+</html>
