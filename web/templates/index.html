@@ -13,12 +13,13 @@
 
 <header class="topbar">
   <div class="topbar-inner">
-    <a href="{{ url_for('index') }}" class="brand">
+    <a href="{{ url_for('dashboard') }}" class="brand">
       <span class="brand-mark"></span>
       <div class="brand-title">ANYAH &amp; CO.</div>
     </a>
-    <nav>
-      <a href="{{ url_for('index') }}" class="nav-link active">Generate</a>
+    <nav><a href="{{ url_for('dashboard') }}" class="nav-link">Dashboard</a>
+      <a href="{{ url_for('gstr1_page') }}" class="nav-link active">Generate</a>
+      <a href="{{ url_for('gstr3b_page') }}" class="nav-link">GSTR-3B</a>
       <a href="{{ url_for('firms_page') }}" class="nav-link">Firms</a>
       <a href="{{ url_for('customers_page') }}" class="nav-link">Customers</a>
       <a href="{{ url_for('files_page') }}" class="nav-link">Files</a>
