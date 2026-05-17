@@ -26,6 +26,9 @@ from json_builder import build_gstr1_json
 from report_builder import build_report
 from gstin_validator import validate_gstin
 from preflight import run_all_preflight_checks
+from gstr2b_reader import parse_gstr2b
+from gstr3b_compute import compute_gstr3b
+from gstr3b_excel_writer import write_gstr3b_excel
 
 from firm_store import FirmStore
 from period_utils import normalize_period, period_to_label, period_bounds
@@ -104,6 +107,185 @@ def customers_page():
     return render_template("customers.html",
                            customers=customers.list_all(),
                            user=session.get("user"))
+
+@app.route("/gstr3b")
+@login_required
+def gstr3b_page():
+    return render_template("gstr3b.html",
+                           firms=firms.list_firms(),
+                           default_period=_default_period(),
+                           user=session.get("user"))
+
+
+@app.route("/api/gstr3b/parse", methods=["POST"])
+@login_required
+def api_gstr3b_parse():
+    """Accept GSTR-2B Excel upload, parse it, return summary JSON."""
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "No file uploaded"}), 400
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"ok": False, "error": "Empty filename"}), 400
+
+    ext = Path(f.filename).suffix.lower()
+    if ext not in {".xlsx", ".xls"}:
+        return jsonify({"ok": False, "error": f"Unsupported extension {ext}"}), 400
+
+    # Save under uploads/ for traceability (Render free tier wipes on restart;
+    # that's fine for this transient file)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe = secure_filename(f.filename)
+    save_path = UPLOAD_DIR / f"gstr2b_{stamp}_{safe}"
+    f.save(save_path)
+
+    try:
+        data = parse_gstr2b(save_path)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Parse failed: {e}"}), 500
+
+    return jsonify({"ok": True, "data": data})
+
+
+@app.route("/api/gstr3b/output-from-gstr1")
+@login_required
+def api_gstr3b_output_from_gstr1():
+    """
+    Look up the most recent GSTR-1 JSON for the given firm + period and
+    return the total output tax (sum of all sections).
+    """
+    firm_id = (request.args.get("firm") or "").strip()
+    period = (request.args.get("period") or "").strip()
+
+    if not firm_id or not period:
+        return jsonify({"ok": False, "error": "firm and period required"}), 400
+
+    firm = firms.get(firm_id)
+    if not firm:
+        return jsonify({"ok": False, "error": "Firm not found"}), 404
+
+    safe_name = "".join(c if c.isalnum() else "_" for c in firm["name"])
+
+    # Find the latest GSTR-1 JSON file matching the firm + period.
+    # Pattern used by the existing GSTR-1 export: <safe>_<period>_<HHMMSS>.json
+    candidates = sorted(
+        OUTPUT_DIR.glob(f"{safe_name}_{period}_*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        return jsonify({"ok": True, "found": False})
+
+    latest = candidates[0]
+    try:
+        with open(latest, "r", encoding="utf-8") as fh:
+            gstr1 = json.load(fh)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Could not read JSON: {e}"}), 500
+
+    totals = _sum_gstr1_output(gstr1)
+    return jsonify({
+        "ok": True,
+        "found": True,
+        "source_file": latest.name,
+        "totals": totals,
+    })
+
+
+def _sum_gstr1_output(g) -> dict:
+    """
+    Sum IGST / CGST / SGST / Cess from a GSTR-1 JSON object.
+    Covers b2b, b2cl, b2cs, cdnr, cdnur (credit notes are subtracted).
+    """
+    totals = {"igst": 0.0, "cgst": 0.0, "sgst": 0.0, "cess": 0.0}
+
+    def add_itm(itm_det, sign=1):
+        if not itm_det:
+            return
+        totals["igst"] += sign * float(itm_det.get("iamt", 0) or 0)
+        totals["cgst"] += sign * float(itm_det.get("camt", 0) or 0)
+        totals["sgst"] += sign * float(itm_det.get("samt", 0) or 0)
+        totals["cess"] += sign * float(itm_det.get("csamt", 0) or 0)
+
+    # b2b: list of {ctin, inv:[{itms:[{itm_det}]}]}
+    for c in (g.get("b2b") or []):
+        for inv in c.get("inv", []):
+            for itm in inv.get("itms", []):
+                add_itm(itm.get("itm_det"))
+
+    # b2cl: list of {pos, inv:[{itms:[{itm_det}]}]}
+    for state in (g.get("b2cl") or []):
+        for inv in state.get("inv", []):
+            for itm in inv.get("itms", []):
+                add_itm(itm.get("itm_det"))
+
+    # b2cs: list of summary rows with iamt/camt/samt/csamt directly
+    for r in (g.get("b2cs") or []):
+        totals["igst"] += float(r.get("iamt", 0) or 0)
+        totals["cgst"] += float(r.get("camt", 0) or 0)
+        totals["sgst"] += float(r.get("samt", 0) or 0)
+        totals["cess"] += float(r.get("csamt", 0) or 0)
+
+    # cdnr: credit notes - subtract from output
+    for c in (g.get("cdnr") or []):
+        for nt in c.get("nt", []):
+            note_type = (nt.get("ntty") or "").upper()
+            sign = -1 if note_type == "C" else 1   # Credit note reduces output
+            for itm in nt.get("itms", []):
+                add_itm(itm.get("itm_det"), sign=sign)
+
+    # cdnur: unregistered credit/debit notes
+    for nt in (g.get("cdnur") or []):
+        note_type = (nt.get("ntty") or "").upper()
+        sign = -1 if note_type == "C" else 1
+        for itm in nt.get("itms", []):
+            add_itm(itm.get("itm_det"), sign=sign)
+
+    return {k: round(max(0.0, v), 2) for k, v in totals.items()}
+
+
+@app.route("/api/gstr3b/compute", methods=["POST"])
+@login_required
+def api_gstr3b_compute():
+    """Run the set-off computation and return the result JSON."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        result = compute_gstr3b(payload)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Compute failed: {e}"}), 500
+    return jsonify({"ok": True, "result": result})
+
+
+@app.route("/api/gstr3b/download", methods=["POST"])
+@login_required
+def api_gstr3b_download():
+    """Generate the formatted Excel and return it as a download."""
+    payload = request.get_json(silent=True) or {}
+    firm = payload.get("firm") or {}
+    period = payload.get("period") or ""
+    inputs = payload.get("inputs") or {}
+    gstr2b = payload.get("gstr2b") or {}
+
+    # Re-run the compute on the server (don't trust client-side numbers)
+    try:
+        computation = compute_gstr3b(inputs)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Compute failed: {e}"}), 500
+
+    period_label = period_to_label(period) if period else period
+    safe = "".join(c if c.isalnum() else "_" for c in (firm.get("name") or "firm"))
+    out_path = OUTPUT_DIR / f"GSTR3B_{safe}_{period}_{datetime.now().strftime('%H%M%S')}.xlsx"
+
+    try:
+        write_gstr3b_excel(out_path, firm, period_label, gstr2b, computation)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Excel generation failed: {e}"}), 500
+
+    return send_from_directory(
+        out_path.parent,
+        out_path.name,
+        as_attachment=True,
+        download_name=out_path.name,
+    )
 
 
 # ---------- Firm API -------------------------------------------------------
