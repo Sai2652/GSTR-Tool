@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Anyah &amp; Co.</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+<style>
+  /* ----- Dashboard-only styles, mirror the Anyah & Co. cream/navy palette ----- */
+  :root {
+    --cream:        #F4EDD7;
+    --cream-soft:   #FAF5E5;
+    --cream-card:   #FBF6E8;
+    --navy:         #0B1638;
+    --navy-soft:    #1E2B4E;
+    --gold:         #C9A86A;
+    --muted:        #6B6357;
+    --border:       #E0D7BD;
+    --green:        #5B7E3D;
+  }
+  body.dash-body {
+    margin: 0;
+    background: var(--cream);
+    color: var(--navy);
+    font-family: 'Georgia', 'Times New Roman', serif;
+  }
+  .dash-nav {
+    background: var(--cream);
+    border-bottom: 1px solid var(--border);
+    padding: 22px 0;
+  }
+  .dash-nav-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .dash-brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-decoration: none;
+    color: var(--navy);
+  }
+  .dash-brand .mark {
+    font-family: 'Georgia', serif;
+    font-weight: 700;
+    font-style: italic;
+    font-size: 24px;
+    color: var(--navy);
+    letter-spacing: -0.5px;
+  }
+  .dash-brand .divider {
+    width: 1px;
+    height: 28px;
+    background: var(--navy);
+    opacity: 0.4;
+  }
+  .dash-brand .full {
+    font-family: 'Georgia', serif;
+    font-size: 16px;
+    letter-spacing: 6px;
+    color: var(--navy);
+  }
+  .dash-nav-links {
+    display: flex;
+    align-items: center;
+    gap: 26px;
+  }
+  .dash-nav-links a {
+    color: var(--navy);
+    text-decoration: none;
+    font-family: 'Helvetica', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    padding-bottom: 4px;
+    border-bottom: 1.5px solid transparent;
+    transition: border-color .15s;
+  }
+  .dash-nav-links a.active,
+  .dash-nav-links a:hover {
+    border-bottom-color: var(--navy);
+  }
+  .dash-nav-links .logout {
+    color: var(--muted);
+    font-size: 13px;
+    margin-left: 8px;
+  }
+  /* ----- Hero ----- */
+  .dash-hero {
+    max-width: 1180px;
+    margin: 50px auto 30px;
+    padding: 0 28px;
+  }
+  .dash-hello {
+    font-family: 'Helvetica', sans-serif;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .dash-hero h1 {
+    margin: 0 0 6px;
+    font-size: 38px;
+    font-weight: 400;
+    color: var(--navy);
+    font-family: 'Georgia', serif;
+    letter-spacing: -0.5px;
+  }
+  .dash-hero p {
+    font-family: 'Helvetica', sans-serif;
+    color: var(--muted);
+    font-size: 14px;
+    max-width: 600px;
+    line-height: 1.5;
+    margin: 0;
+  }
+  /* ----- Card grid ----- */
+  .dash-grid {
+    max-width: 1180px;
+    margin: 30px auto;
+    padding: 0 28px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 22px;
+  }
+  .dash-card {
+    background: var(--cream-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 28px 26px;
+    text-decoration: none;
+    color: var(--navy);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
+  }
+  .dash-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(11, 22, 56, 0.12);
+    border-color: var(--navy);
+  }
+  .dash-card.featured {
+    background: var(--navy);
+    color: var(--cream);
+    border-color: var(--navy);
+  }
+  .dash-card.featured .card-meta,
+  .dash-card.featured .card-cta {
+    color: var(--cream);
+  }
+  .dash-card .card-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--cream);
+    color: var(--navy);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    margin-bottom: 18px;
+    font-weight: 600;
+  }
+  .dash-card.featured .card-icon {
+    background: var(--gold);
+    color: var(--navy);
+  }
+  .dash-card .card-title {
+    font-family: 'Georgia', serif;
+    font-size: 20px;
+    font-weight: 400;
+    margin: 0 0 6px;
+    letter-spacing: -0.3px;
+  }
+  .dash-card .card-meta {
+    font-family: 'Helvetica', sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+  .dash-card .card-desc {
+    font-family: 'Helvetica', sans-serif;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--muted);
+    margin: 0 0 22px;
+    flex: 1;
+  }
+  .dash-card.featured .card-desc {
+    color: rgba(244, 237, 215, 0.85);
+  }
+  .dash-card .card-cta {
+    font-family: 'Helvetica', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--navy);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dash-card .card-cta::after {
+    content: "→";
+    font-size: 14px;
+    transition: transform .18s;
+  }
+  .dash-card:hover .card-cta::after {
+    transform: translateX(4px);
+  }
+  /* ----- Recent activity ----- */
+  .dash-recent {
+    max-width: 1180px;
+    margin: 40px auto 60px;
+    padding: 0 28px;
+  }
+  .dash-recent h2 {
+    font-family: 'Georgia', serif;
+    font-size: 24px;
+    font-weight: 400;
+    color: var(--navy);
+    margin: 0 0 18px;
+    letter-spacing: -0.3px;
+  }
+  .dash-recent .h-sub {
+    font-family: 'Helvetica', sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .recent-list {
+    background: var(--cream-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .recent-row {
+    display: flex;
+    align-items: center;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Helvetica', sans-serif;
+    font-size: 13px;
+    color: var(--navy);
+  }
+  .recent-row:last-child { border-bottom: none; }
+  .recent-row .r-tag {
+    font-family: 'Helvetica', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    background: var(--navy);
+    color: var(--cream);
+    padding: 3px 9px;
+    border-radius: 2px;
+    margin-right: 14px;
+    flex: 0 0 auto;
+  }
+  .recent-row .r-tag.g3 { background: var(--gold); color: var(--navy); }
+  .recent-row .r-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recent-row .r-time { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .recent-empty {
+    padding: 30px 22px;
+    text-align: center;
+    color: var(--muted);
+    font-family: 'Helvetica', sans-serif;
+    font-size: 13px;
+    font-style: italic;
+  }
+  /* ----- Footer ----- */
+  .dash-foot {
+    border-top: 1px solid var(--border);
+    padding: 26px 28px;
+    margin-top: 40px;
+    font-family: 'Helvetica', sans-serif;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body class="dash-body">
+
+<nav class="dash-nav">
+  <div class="dash-nav-inner">
+    <a class="dash-brand" href="{{ url_for('dashboard') }}">
+      <span class="mark">A&amp;Co.</span>
+      <span class="divider"></span>
+      <span class="full">ANYAH &amp; CO.</span>
+    </a>
+    <div class="dash-nav-links">
+      <a href="{{ url_for('dashboard') }}" class="active">Dashboard</a>
+      <a href="{{ url_for('gstr1_page') }}">GSTR-1</a>
+      <a href="{{ url_for('gstr3b_page') }}">GSTR-3B</a>
+      <a href="{{ url_for('firms_page') }}">Firms</a>
+      <a href="{{ url_for('customers_page') }}">Customers</a>
+      <a href="{{ url_for('files_page') }}">Files</a>
+      {% if user %}<a class="logout" href="{{ url_for('logout') }}">Sign out</a>{% endif %}
+    </div>
+  </div>
+</nav>
+
+<section class="dash-hero">
+  <div class="dash-hello">Welcome{% if user %}, {{ user }}{% endif %}</div>
+  <h1>What would you like to do today?</h1>
+  <p>Choose a return to generate, manage your firm or customer master, or browse recently generated outputs. Every action is auto-saved to your firm's workspace.</p>
+</section>
+
+<div class="dash-grid">
+  <!-- GSTR-1 -->
+  <a href="{{ url_for('gstr1_page') }}" class="dash-card featured">
+    <div class="card-icon">G1</div>
+    <div class="card-meta">Monthly Return</div>
+    <div class="card-title">GSTR-1 — Outward Supplies</div>
+    <p class="card-desc">Upload your sales register, preview parsed invoices, and generate the JSON ready for filing on the GST portal.</p>
+    <span class="card-cta">Generate Return</span>
+  </a>
+
+  <!-- GSTR-3B -->
+  <a href="{{ url_for('gstr3b_page') }}" class="dash-card">
+    <div class="card-icon">G3</div>
+    <div class="card-meta">Liability Computation</div>
+    <div class="card-title">GSTR-3B — ITC &amp; Tax Set-off</div>
+    <p class="card-desc">Upload GSTR-2B, review eligible ITC, apply credit set-off per Rule 88A, and download a formatted computation Excel.</p>
+    <span class="card-cta">Compute Liability</span>
+  </a>
+
+  <!-- Firms -->
+  <a href="{{ url_for('firms_page') }}" class="dash-card">
+    <div class="card-icon">F</div>
+    <div class="card-meta">Master Data</div>
+    <div class="card-title">Firms</div>
+    <p class="card-desc">Add, edit, or remove the firms you file for. Each firm holds its own GSTIN, legal name, and return history.</p>
+    <span class="card-cta">Manage Firms</span>
+  </a>
+
+  <!-- Customers -->
+  <a href="{{ url_for('customers_page') }}" class="dash-card">
+    <div class="card-icon">C</div>
+    <div class="card-meta">Master Data</div>
+    <div class="card-title">Customers</div>
+    <p class="card-desc">Customer GSTIN cache that auto-learns from past returns. Edit names and dedupe entries.</p>
+    <span class="card-cta">Open Customer Master</span>
+  </a>
+
+  <!-- Files -->
+  <a href="{{ url_for('files_page') }}" class="dash-card">
+    <div class="card-icon">D</div>
+    <div class="card-meta">Storage</div>
+    <div class="card-title">Files &amp; Archives</div>
+    <p class="card-desc">Browse uploaded sales registers and the JSON / Excel reports generated for past periods.</p>
+    <span class="card-cta">Browse Files</span>
+  </a>
+</div>
+
+<section class="dash-recent">
+  <div class="h-sub">Activity</div>
+  <h2>Recent Outputs</h2>
+  <div class="recent-list">
+    {% if recent_outputs and recent_outputs|length > 0 %}
+      {% for r in recent_outputs %}
+      <div class="recent-row">
+        <span class="r-tag {% if r.kind == 'GSTR-3B' %}g3{% endif %}">{{ r.kind }}</span>
+        <span class="r-name">{{ r.name }}</span>
+        <span class="r-time">{{ r.when }}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="recent-empty">No outputs yet. Generate a return to see it listed here.</div>
+    {% endif %}
+  </div>
+</section>
+
+<footer class="dash-foot">
+  ANYAH &amp; CO. &nbsp;·&nbsp; GSTR Tool &nbsp;·&nbsp; {{ current_year }}
+</footer>
+
+</body>
+</html>
