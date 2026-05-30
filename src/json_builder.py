@@ -386,6 +386,108 @@ def build_cdnur_section(notes: list) -> list:
 
 
 # ======================================================================
+# Exports — GSTR-1 'exp' section
+# ======================================================================
+def build_exp_section(invoices: list) -> list:
+    """
+    Exports schema (per GSTN offline tool):
+      [{
+        "exp_typ": "WPAY" | "WOPAY",
+        "inv": [{
+          "inum": "...", "idt": "DD-MM-YYYY", "val": ...,
+          "sbpcode": "INMAA1",        (port code, optional)
+          "sbnum": "...",             (shipping bill no, optional)
+          "sbdt": "DD-MM-YYYY",       (shipping bill date, optional)
+          "itms": [{ "txval": ..., "rt": ..., "iamt": ..., "csamt": ... }]
+        }]
+      }]
+    SEZ supplies share the same shape (filed under WPAY/WOPAY).
+    """
+    by_type = defaultdict(list)
+    for inv in invoices:
+        sty = inv.get("supply_type", "EXPORT_WPAY")
+        # Both EXPORT_WPAY and SEZ_WPAY → "WPAY"; same for WOPAY
+        exp_typ = "WPAY" if sty.endswith("WPAY") else "WOPAY"
+        by_type[exp_typ].append(inv)
+
+    exp = []
+    for exp_typ, inv_list in by_type.items():
+        invs = []
+        for inv in inv_list:
+            collapsed = _collapse_items_by_rate(inv["items"])
+            itms = []
+            for item in collapsed:
+                itm = {
+                    "txval": _num(item["taxable_value"]),
+                    "rt": _num(item["tax_rate"]),
+                }
+                if exp_typ == "WPAY":
+                    itm["iamt"] = _num(item["igst_amount"])
+                else:
+                    itm["iamt"] = 0
+                itm["csamt"] = _num(item["cess_amount"])
+                itms.append(itm)
+            entry = {
+                "inum": str(inv["invoice_no"]).strip(),
+                "idt": _format_date(inv["invoice_date"]),
+                "val": _num(inv["invoice_value"]),
+            }
+            if inv.get("port_code"):
+                entry["sbpcode"] = str(inv["port_code"]).strip()
+            if inv.get("shipping_bill_no"):
+                entry["sbnum"] = str(inv["shipping_bill_no"]).strip()
+            if inv.get("shipping_bill_date"):
+                entry["sbdt"] = _format_date(inv["shipping_bill_date"])
+            entry["itms"] = itms
+            invs.append(entry)
+        exp.append({"exp_typ": exp_typ, "inv": invs})
+    return exp
+
+
+# ======================================================================
+# Nil-rated / Exempt / Non-GST — GSTR-1 'nil' section (Table 8)
+# ======================================================================
+def build_nil_section(invoices: list) -> dict:
+    """
+    Schema:
+      "nil": { "inv": [
+        { "sply_ty": "INTRB2B"|"INTRB2C"|"INTRAB2B"|"INTRAB2C",
+          "expt_amt": ..., "nil_amt": ..., "ngsup_amt": ... }
+      ]}
+    Four supply_ty buckets cross-tab by inter/intra and b2b/b2c.
+    """
+    buckets = {
+        "INTRB2B":  {"nil_amt": 0.0, "expt_amt": 0.0, "ngsup_amt": 0.0},
+        "INTRB2C":  {"nil_amt": 0.0, "expt_amt": 0.0, "ngsup_amt": 0.0},
+        "INTRAB2B": {"nil_amt": 0.0, "expt_amt": 0.0, "ngsup_amt": 0.0},
+        "INTRAB2C": {"nil_amt": 0.0, "expt_amt": 0.0, "ngsup_amt": 0.0},
+    }
+    type_field = {"NIL": "nil_amt", "EXEMPT": "expt_amt", "NON_GST": "ngsup_amt"}
+
+    for inv in invoices:
+        sty = inv.get("supply_type", "NIL")
+        field = type_field.get(sty)
+        if not field:
+            continue
+        inter = bool(inv.get("is_interstate"))
+        b2b = bool(inv.get("is_b2b")) and bool(inv.get("gstin"))
+        key = ("INTR" if inter else "INTRA") + ("B2B" if b2b else "B2C")
+        amt = sum(float(it.get("taxable_value") or 0) for it in inv.get("items", []))
+        buckets[key][field] += amt
+
+    inv_list = []
+    for sply_ty, vals in buckets.items():
+        if any(round(v, 2) for v in vals.values()):
+            inv_list.append({
+                "sply_ty": sply_ty,
+                "expt_amt": _num(vals["expt_amt"]),
+                "nil_amt": _num(vals["nil_amt"]),
+                "ngsup_amt": _num(vals["ngsup_amt"]),
+            })
+    return {"inv": inv_list} if inv_list else {}
+
+
+# ======================================================================
 # HSN — nested under "hsn" with hsn_b2b and/or hsn_b2c
 # ======================================================================
 def _build_hsn_entries(invoices: list, is_b2b_set: bool) -> list:
@@ -520,6 +622,12 @@ def build_gstr1_json(
         payload["cdnr"] = build_cdnr_section(buckets["cdnr"])
     if buckets.get("cdnur"):
         payload["cdnur"] = build_cdnur_section(buckets["cdnur"])
+    if buckets.get("exp"):
+        payload["exp"] = build_exp_section(buckets["exp"])
+    if buckets.get("nil"):
+        nil_sec = build_nil_section(buckets["nil"])
+        if nil_sec:
+            payload["nil"] = nil_sec
 
     # doc_issue counts only regular outward invoices, not credit/debit notes
     regular_invoices = [d for d in all_invoices if d.get("doc_type", "INV") == "INV"]

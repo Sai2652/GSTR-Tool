@@ -53,6 +53,19 @@ COLUMN_MAP = {
     "Reverse Charge?": "reverse_charge",
     "RCM": "reverse_charge",
     "Rev Charge": "reverse_charge",
+    # Supply type — one of:
+    #   REGULAR (default), NIL, EXEMPT, NON_GST,
+    #   EXPORT_WPAY, EXPORT_WOPAY, SEZ_WPAY, SEZ_WOPAY, DEEMED
+    "Supply Type": "supply_type",
+    "Supply type": "supply_type",
+    "SupplyType": "supply_type",
+    "Nature of Supply": "supply_type",
+    # Export-specific
+    "Shipping Bill No": "shipping_bill_no",
+    "Shipping Bill No.": "shipping_bill_no",
+    "Shipping Bill Number": "shipping_bill_no",
+    "Shipping Bill Date": "shipping_bill_date",
+    "Port Code": "port_code",
 }
 
 
@@ -139,8 +152,40 @@ def read_sales(path: str) -> pd.DataFrame:
     else:
         df["reverse_charge"] = "N"
 
+    # Normalize supply_type to canonical token; default REGULAR
+    if "supply_type" in df.columns:
+        df["supply_type"] = df["supply_type"].apply(_normalize_supply_type)
+    else:
+        df["supply_type"] = "REGULAR"
+
+    # Shipping bill date parsing (exports)
+    if "shipping_bill_date" in df.columns:
+        df["shipping_bill_date"] = pd.to_datetime(
+            df["shipping_bill_date"], errors="coerce", dayfirst=True)
+
     df = df.reset_index(drop=True)
     return df
+
+
+SUPPLY_TYPE_ALIASES = {
+    "": "REGULAR", "REGULAR": "REGULAR", "TAXABLE": "REGULAR",
+    "NIL": "NIL", "NIL RATED": "NIL", "NIL-RATED": "NIL",
+    "EXEMPT": "EXEMPT", "EXEMPTED": "EXEMPT",
+    "NON-GST": "NON_GST", "NON GST": "NON_GST", "NONGST": "NON_GST", "NON_GST": "NON_GST",
+    "EXPORT": "EXPORT_WPAY",  # default to with-payment if unspecified
+    "EXPORT WPAY": "EXPORT_WPAY", "EXPORT-WPAY": "EXPORT_WPAY",
+    "EXPORT WITH PAYMENT": "EXPORT_WPAY", "EXPWP": "EXPORT_WPAY",
+    "EXPORT WOPAY": "EXPORT_WOPAY", "EXPORT-WOPAY": "EXPORT_WOPAY",
+    "EXPORT WITHOUT PAYMENT": "EXPORT_WOPAY", "EXPWOP": "EXPORT_WOPAY",
+    "SEZ WPAY": "SEZ_WPAY", "SEZ-WPAY": "SEZ_WPAY", "SEZ WITH PAYMENT": "SEZ_WPAY",
+    "SEZ WOPAY": "SEZ_WOPAY", "SEZ-WOPAY": "SEZ_WOPAY", "SEZ WITHOUT PAYMENT": "SEZ_WOPAY",
+    "DEEMED": "DEEMED", "DEEMED EXPORT": "DEEMED",
+}
+
+
+def _normalize_supply_type(v) -> str:
+    s = str(v or "").strip().upper()
+    return SUPPLY_TYPE_ALIASES.get(s, "REGULAR")
 
 
 def _normalize_rchrg(v) -> str:

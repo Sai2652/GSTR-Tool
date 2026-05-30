@@ -18,13 +18,14 @@ from collections import defaultdict
 
 
 def _doc_key(row):
-    """Document identity = (GSTIN, document_no, document_date, doc_type, rchrg)."""
+    """Document identity = (GSTIN, document_no, document_date, doc_type, rchrg, supply_type)."""
     return (
         str(row.get("corrected_gstin") or row.get("gstin") or "").strip(),
         str(row.get("invoice_no", "")).strip(),
         pd.to_datetime(row.get("invoice_date")).date() if pd.notna(row.get("invoice_date")) else None,
         str(row.get("doc_type_canonical", "INV") or "INV"),
         str(row.get("reverse_charge", "N") or "N").upper(),
+        str(row.get("supply_type", "REGULAR") or "REGULAR").upper(),
     )
 
 
@@ -38,6 +39,10 @@ def consolidate_invoices(df: pd.DataFrame) -> list:
     docs = defaultdict(lambda: {
         "doc_type": "INV",
         "reverse_charge": "N",
+        "supply_type": "REGULAR",
+        "shipping_bill_no": "",
+        "shipping_bill_date": None,
+        "port_code": "",
         "gstin": "",
         "invoice_no": "",
         "invoice_date": None,
@@ -71,6 +76,13 @@ def consolidate_invoices(df: pd.DataFrame) -> list:
 
         doc["doc_type"] = key[3]
         doc["reverse_charge"] = key[4]
+        doc["supply_type"] = key[5]
+        if row.get("shipping_bill_no"):
+            doc["shipping_bill_no"] = str(row.get("shipping_bill_no", "")).strip()
+        if row.get("shipping_bill_date") is not None and pd.notna(row.get("shipping_bill_date")):
+            doc["shipping_bill_date"] = pd.to_datetime(row.get("shipping_bill_date")).date()
+        if row.get("port_code"):
+            doc["port_code"] = str(row.get("port_code", "")).strip()
         doc["gstin"] = key[0]
         doc["invoice_no"] = key[1]
         doc["invoice_date"] = key[2]
@@ -137,18 +149,40 @@ def consolidate_invoices(df: pd.DataFrame) -> list:
     return result
 
 
+EXPORT_TYPES = {"EXPORT_WPAY", "EXPORT_WOPAY", "SEZ_WPAY", "SEZ_WOPAY"}
+NIL_TYPES = {"NIL", "EXEMPT", "NON_GST"}
+
+
 def classify_invoices(invoices: list, b2cl_threshold: float = 250000.0) -> dict:
     """
-    Classify documents into buckets by section:
+    Classify documents into buckets by GSTR-1 section:
       - b2b   : regular invoices to registered customers
       - b2cl  : unregistered + interstate + > 2.5L
       - b2cs  : unregistered, small or intra-state
       - cdnr  : credit/debit notes to registered customers
       - cdnur : credit/debit notes to unregistered customers
+      - exp   : exports (with/without payment of IGST) and SEZ supplies
+      - nil   : nil-rated, exempt and non-GST supplies (Table 8)
     """
-    buckets = {"b2b": [], "b2cl": [], "b2cs": [], "cdnr": [], "cdnur": []}
+    buckets = {"b2b": [], "b2cl": [], "b2cs": [],
+               "cdnr": [], "cdnur": [],
+               "exp": [], "nil": []}
     for inv in invoices:
         is_note = inv.get("doc_type") in ("C", "D")
+        sty = inv.get("supply_type", "REGULAR")
+
+        # Nil/Exempt/Non-GST take precedence — same handling for invoices and notes
+        if sty in NIL_TYPES:
+            buckets["nil"].append(inv)
+            continue
+
+        # Exports / SEZ → 'exp' (CDNUR for export notes; portal handles them there)
+        if sty in EXPORT_TYPES:
+            if is_note:
+                buckets["cdnur"].append(inv)
+            else:
+                buckets["exp"].append(inv)
+            continue
 
         if is_note:
             if inv["is_b2b"] and inv["gstin"]:

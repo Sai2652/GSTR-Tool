@@ -162,6 +162,7 @@ def _empty_result() -> Dict[str, Any]:
             "credit_notes": _empty_tax(),
             "total": _empty_tax(),
         },
+        "table4": {},
         "warnings": [],
     }
 
@@ -228,6 +229,13 @@ def parse_gstr2b(path: str | Path) -> Dict[str, Any]:
         except Exception as e:
             result["warnings"].append(f"Could not parse '{sheet_name}': {e}")
 
+    # Build the formal GSTR-3B Table 4 line breakdown.
+    # Reference: Notification 14/2022-CT (Oct 2022) — restructured Table 4.
+    try:
+        result["table4"] = _build_table4_lines(result)
+    except Exception as e:
+        result["warnings"].append(f"Could not build Table 4 breakdown: {e}")
+
     # Section 16(4): ITC on any prior-FY invoice cannot be claimed after
     # 30 November of the following FY (or the date of filing of the annual
     # return, whichever is earlier). We scan detail sheets for invoice dates
@@ -244,6 +252,69 @@ def parse_gstr2b(path: str | Path) -> Dict[str, Any]:
         result["warnings"].append(f"Could not run Section 16(4) check: {e}")
 
     return result
+
+
+# --- Table 4 line breakdown (post-Oct 2022) -------------------------------
+
+def _build_table4_lines(parsed: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
+    """
+    Produce the official GSTR-3B Table 4 line items from parsed GSTR-2B.
+
+      4(A) ITC Available:
+        4(A)(1) Import of goods            <- itc_available.imports
+        4(A)(2) Import of services         <- (manual; not in 2B)
+        4(A)(3) Inward supplies (RCM)      <- itc_available.reverse_charge
+        4(A)(4) Inward supplies from ISD   <- itc_available.isd
+        4(A)(5) All other ITC              <- itc_available.all_other_itc
+                                              minus credit_notes (Part B)
+
+      4(B) ITC Reversed:
+        4(B)(1) As per Rules 38,42,43, Sec 17(5)  <- (manual)
+        4(B)(2) Others (temporary reversals)      <- itc_reversal.total
+
+      4(C) Net ITC available = 4(A) - 4(B)
+
+      4(D) Other details:
+        4(D)(1) ITC reclaimed (from 4(B)(2))      <- (manual)
+        4(D)(2) Ineligible ITC u/s 16(4) & POS    <- itc_not_available.total
+                                                     + itc_rejected.total
+    """
+    avail = parsed.get("itc_available", {})
+    notavail = parsed.get("itc_not_available", {})
+    reversal = parsed.get("itc_reversal", {})
+    rejected = parsed.get("itc_rejected", {})
+
+    # 4(A)(5) = all_other_itc net of Part B credit notes
+    a5_net = _sub_tax(
+        avail.get("all_other_itc", _empty_tax()),
+        avail.get("credit_notes", _empty_tax()),
+    )
+
+    table4 = {
+        "4A1_import_goods":        dict(avail.get("imports", _empty_tax())),
+        "4A2_import_services":     _empty_tax(),  # manual
+        "4A3_reverse_charge":      dict(avail.get("reverse_charge", _empty_tax())),
+        "4A4_isd":                 dict(avail.get("isd", _empty_tax())),
+        "4A5_all_other_itc":       a5_net,
+        "4B1_rules_38_42_43_17_5": _empty_tax(),  # manual
+        "4B2_others":              dict(reversal.get("total", _empty_tax())),
+        "4D1_reclaimed":           _empty_tax(),  # manual
+        "4D2_ineligible_16_4_pos": _add_tax(
+            notavail.get("total", _empty_tax()),
+            rejected.get("total", _empty_tax()),
+        ),
+    }
+
+    # 4(A) total and 4(C) net
+    a_total = _empty_tax()
+    for k in ("4A1_import_goods", "4A2_import_services", "4A3_reverse_charge",
+              "4A4_isd", "4A5_all_other_itc"):
+        a_total = _add_tax(a_total, table4[k])
+    b_total = _add_tax(table4["4B1_rules_38_42_43_17_5"], table4["4B2_others"])
+    table4["4A_total"] = a_total
+    table4["4B_total"] = b_total
+    table4["4C_net_itc"] = _sub_tax(a_total, b_total)
+    return table4
 
 
 # --- Section 16(4) helpers ------------------------------------------------

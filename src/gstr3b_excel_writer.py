@@ -263,6 +263,53 @@ def _write_itc_details(wb, gstr2b: Dict):
     ws.sheet_view.showGridLines = False
 
 
+def _write_table4(wb, gstr2b: Dict):
+    """Formal Table 4 line breakdown per Notification 14/2022-CT (Oct 2022)."""
+    table4 = gstr2b.get("table4") or {}
+    if not table4:
+        return
+    ws = wb.create_sheet("Table 4 (GSTR-3B)")
+    _set_col_widths(ws, [55, 16, 16, 16, 16])
+    _title_row(ws, 1, "GSTR-3B Table 4 — Eligible ITC (line-wise)", 5)
+    r = 3
+    _table_header(ws, r, ["Line", "IGST", "CGST", "SGST", "Cess"], fill=PURPLE)
+    r += 1
+
+    rows = [
+        ("4(A) ITC Available — section header", None),
+        ("  4(A)(1) Import of goods", "4A1_import_goods"),
+        ("  4(A)(2) Import of services (manual entry)", "4A2_import_services"),
+        ("  4(A)(3) Inward supplies liable to reverse charge", "4A3_reverse_charge"),
+        ("  4(A)(4) Inward supplies from ISD", "4A4_isd"),
+        ("  4(A)(5) All other ITC", "4A5_all_other_itc"),
+        ("  4(A) TOTAL", "4A_total"),
+        ("4(B) ITC Reversed — section header", None),
+        ("  4(B)(1) As per Rules 38, 42, 43 & Sec 17(5) (manual)", "4B1_rules_38_42_43_17_5"),
+        ("  4(B)(2) Others", "4B2_others"),
+        ("  4(B) TOTAL", "4B_total"),
+        ("4(C) Net ITC available [4(A) – 4(B)]", "4C_net_itc"),
+        ("4(D) Other Details — section header", None),
+        ("  4(D)(1) ITC reclaimed which was reversed under 4(B)(2) (manual)", "4D1_reclaimed"),
+        ("  4(D)(2) Ineligible ITC under Sec 16(4) & POS rules", "4D2_ineligible_16_4_pos"),
+    ]
+    for label, key in rows:
+        if key is None:
+            _section_row(ws, r, label, 5, fill=PURPLE_LIGHT)
+        else:
+            t = table4.get(key, {"igst": 0, "cgst": 0, "sgst": 0, "cess": 0})
+            _data_row(ws, r, [label, t["igst"], t["cgst"], t["sgst"], t["cess"]],
+                      money_cols={2, 3, 4, 5})
+        r += 1
+    r += 1
+    note = ws.cell(r, 1, value=(
+        "Note: Lines marked 'manual' are not present in GSTR-2B and must be "
+        "filled by the taxpayer based on books of account."
+    ))
+    note.font = _font(size=9, italic=True, color=GREY_MUTED)
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
+    ws.sheet_view.showGridLines = False
+
+
 def _write_output_tax(wb, comp: Dict):
     ws = wb.create_sheet("Output Tax (Table 3.1)")
     _set_col_widths(ws, [40, 22])
@@ -410,6 +457,7 @@ def write_gstr3b_excel(out_path: str | Path,
 
     _write_summary(wb, firm, period_label, gstr2b, computation)
     _write_itc_details(wb, gstr2b)
+    _write_table4(wb, gstr2b)
     _write_output_tax(wb, computation)
     _write_itc_computation(wb, computation)
     _write_setoff(wb, computation)
