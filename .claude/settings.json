@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -Command \"cd 'D:\\GSTR Tool'; git add -A; if (git diff --cached --quiet) { exit 0 }; git commit -m 'auto: claude edit' | Out-Null; git push origin main 2>&1 | Out-Null\""
+          }
+        ]
+      }
+    ]
+  }
+}
