@@ -226,11 +226,14 @@ def api_gstr3b_output_from_gstr1():
         return jsonify({"ok": True, "found": False})
 
     totals = _sum_gstr1_output(gstr1)
+    breakdown = _gstr1_to_3b_breakdown(gstr1)
     return jsonify({
         "ok": True,
         "found": True,
         "source_file": source_file,
         "totals": totals,
+        "supplies_3_1": breakdown["supplies_3_1"],
+        "inter_state_3_2": breakdown["inter_state_3_2"],
     })
 
     firm = firms.get(firm_id)
@@ -315,6 +318,117 @@ def _sum_gstr1_output(g) -> dict:
             add_itm(itm.get("itm_det"), sign=sign)
 
     return {k: round(max(0.0, v), 2) for k, v in totals.items()}
+
+
+def _gstr1_to_3b_breakdown(g: dict) -> dict:
+    """
+    Derive GSTR-3B Tables 3.1 and 3.2 breakdown from a GSTR-1 JSON.
+
+    Returns:
+      {
+        "supplies_3_1": {
+          "3.1.a": {tx, igst, cgst, sgst, cess},   # regular taxable outward
+          "3.1.b": {...},                          # zero-rated (exp + SEZ)
+          "3.1.c": {...},                          # nil-rated + exempt outward
+          "3.1.d": {...},                          # left as zeros — populated
+                                                   # from GSTR-2B RCM elsewhere
+          "3.1.e": {...},                          # non-GST outward
+        },
+        "inter_state_3_2": [
+          {"kind": "urd", "pos": "29", "tx": .., "igst": ..},
+          ...
+        ],
+      }
+    """
+    z = {"tx": 0.0, "igst": 0.0, "cgst": 0.0, "sgst": 0.0, "cess": 0.0}
+    a = dict(z); b = dict(z); c = dict(z); d = dict(z); e = dict(z)
+
+    def add(row, itm_det, sign=1):
+        row["igst"] += sign * float(itm_det.get("iamt", 0) or 0)
+        row["cgst"] += sign * float(itm_det.get("camt", 0) or 0)
+        row["sgst"] += sign * float(itm_det.get("samt", 0) or 0)
+        row["cess"] += sign * float(itm_det.get("csamt", 0) or 0)
+        row["tx"]   += sign * float(itm_det.get("txval", 0) or 0)
+
+    # 3.1(a) — regular B2B (rchrg=N), B2CL, B2CS
+    for ctin in (g.get("b2b") or []):
+        for inv in ctin.get("inv", []):
+            if (inv.get("rchrg") or "N").upper() == "Y":
+                continue  # RCM B2B counts as 3.1(d) for the recipient — skip outward
+            for itm in inv.get("itms", []):
+                add(a, itm.get("itm_det", {}))
+    for state in (g.get("b2cl") or []):
+        for inv in state.get("inv", []):
+            for itm in inv.get("itms", []):
+                add(a, itm.get("itm_det", {}))
+    for r in (g.get("b2cs") or []):
+        # B2CS rows carry totals directly, not nested itm_det
+        a["igst"] += float(r.get("iamt", 0) or 0)
+        a["cgst"] += float(r.get("camt", 0) or 0)
+        a["sgst"] += float(r.get("samt", 0) or 0)
+        a["cess"] += float(r.get("csamt", 0) or 0)
+        a["tx"]   += float(r.get("txval", 0) or 0)
+
+    # Credit/debit notes for registered customers (subtract for C, add for D)
+    for ctin in (g.get("cdnr") or []):
+        for nt in ctin.get("nt", []):
+            sign = -1 if (nt.get("ntty") or "").upper() == "C" else 1
+            if (nt.get("rchrg") or "N").upper() == "Y":
+                continue
+            for itm in nt.get("itms", []):
+                add(a, itm.get("itm_det", {}), sign=sign)
+    for nt in (g.get("cdnur") or []):
+        sign = -1 if (nt.get("ntty") or "").upper() == "C" else 1
+        ur_typ = (nt.get("typ") or "").upper()
+        target = b if ur_typ in ("EXPWP", "EXPWOP") else a
+        for itm in nt.get("itms", []):
+            add(target, itm.get("itm_det", {}), sign=sign)
+
+    # 3.1(b) — zero-rated: exports + SEZ
+    for blk in (g.get("exp") or []):
+        for inv in blk.get("inv", []):
+            for itm in inv.get("itms", []):
+                add(b, itm.get("itm_det", itm))  # exp items have flat keys
+
+    # 3.1(c) — nil-rated + exempt; 3.1(e) — non-GST
+    for entry in ((g.get("nil") or {}).get("inv") or []):
+        c["tx"] += float(entry.get("nil_amt", 0) or 0)
+        c["tx"] += float(entry.get("expt_amt", 0) or 0)
+        e["tx"] += float(entry.get("ngsup_amt", 0) or 0)
+
+    # Round + clamp
+    def fix(r):
+        return {k: round(max(0.0, v), 2) for k, v in r.items()}
+    supplies_3_1 = {
+        "3.1.a": fix(a), "3.1.b": fix(b), "3.1.c": fix(c),
+        "3.1.d": fix(d), "3.1.e": fix(e),
+    }
+
+    # 3.2 — Inter-state to URD by POS: derived from B2CL + interstate B2CS rows
+    pos_urd = {}
+    for state in (g.get("b2cl") or []):
+        pos = str(state.get("pos") or "").zfill(2)
+        agg = pos_urd.setdefault(pos, {"tx": 0.0, "igst": 0.0})
+        for inv in state.get("inv", []):
+            for itm in inv.get("itms", []):
+                det = itm.get("itm_det", {})
+                agg["tx"]   += float(det.get("txval", 0) or 0)
+                agg["igst"] += float(det.get("iamt", 0) or 0)
+    for r in (g.get("b2cs") or []):
+        if (r.get("sply_ty") or "").upper() != "INTER":
+            continue
+        pos = str(r.get("pos") or "").zfill(2)
+        agg = pos_urd.setdefault(pos, {"tx": 0.0, "igst": 0.0})
+        agg["tx"]   += float(r.get("txval", 0) or 0)
+        agg["igst"] += float(r.get("iamt", 0) or 0)
+
+    inter_state_3_2 = [
+        {"kind": "urd", "pos": pos,
+         "tx": round(v["tx"], 2), "igst": round(v["igst"], 2)}
+        for pos, v in sorted(pos_urd.items())
+        if round(v["tx"], 2) or round(v["igst"], 2)
+    ]
+    return {"supplies_3_1": supplies_3_1, "inter_state_3_2": inter_state_3_2}
 
 
 @app.route("/api/gstr3b/compute", methods=["POST"])
@@ -409,6 +523,21 @@ def api_gstr3b_download_pdf():
     period_label = period_to_label(period) if period else period
     safe = "".join(c if c.isalnum() else "_" for c in (firm.get("name") or "firm"))
     out_path = OUTPUT_DIR / f"GSTR3B_{safe}_{period}_{datetime.now().strftime('%H%M%S')}.pdf"
+
+    # Derive 3.1(d) inward RCM from GSTR-2B reverse_charge category (tax only —
+    # taxable value isn't in the summary sheet). If client passed an explicit
+    # 3.1(d) row we don't overwrite it.
+    if supplies_3_1 is None:
+        supplies_3_1 = {}
+    if "3.1.d" not in supplies_3_1 or not supplies_3_1["3.1.d"]:
+        rcm_in = ((gstr2b or {}).get("itc_available") or {}).get("reverse_charge") or {}
+        supplies_3_1["3.1.d"] = {
+            "tx": 0.0,  # not available from summary sheet
+            "igst": float(rcm_in.get("igst", 0) or 0),
+            "cgst": float(rcm_in.get("cgst", 0) or 0),
+            "sgst": float(rcm_in.get("sgst", 0) or 0),
+            "cess": float(rcm_in.get("cess", 0) or 0),
+        }
 
     try:
         write_gstr3b_pdf(

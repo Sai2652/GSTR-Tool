@@ -199,6 +199,9 @@
         $('out-cgst').value = json.totals.cgst || 0;
         $('out-sgst').value = json.totals.sgst || 0;
         $('out-cess').value = json.totals.cess || 0;
+        // Stash breakdowns for the portal-format PDF
+        state.supplies_3_1 = json.supplies_3_1 || null;
+        state.inter_state_3_2 = json.inter_state_3_2 || null;
         $('pull-status').innerHTML = '<span style="color:#15803d;">✓ Auto-filled from ' + json.source_file + '. Edit if needed.</span>';
       } else {
         $('pull-status').innerHTML = '<span style="color:#92400e;">No saved GSTR-1 found for this firm + period. Enter manually below.</span>';
@@ -322,6 +325,8 @@
           period: state.period,
           inputs: getInputs(),
           gstr2b: state.gstr2bRaw,
+          supplies_3_1: state.supplies_3_1 || null,
+          inter_state_3_2: state.inter_state_3_2 || null,
         }),
       });
       if (!res.ok) {
