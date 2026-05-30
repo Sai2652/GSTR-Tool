@@ -306,6 +306,46 @@
   }
 
   $('download-btn').addEventListener('click', download);
+  $('download-pdf-btn').addEventListener('click', downloadPdf);
+
+  async function downloadPdf() {
+    if (!state.computation) return;
+    const btn = $('download-pdf-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="g3-spinner"></span> Generating…';
+    try {
+      const res = await fetch('/api/gstr3b/download-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firm: { name: state.firmName, gstin: state.firmGstin, id: state.firmId },
+          period: state.period,
+          inputs: getInputs(),
+          gstr2b: state.gstr2bRaw,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert('PDF download failed: ' + (j.error || res.statusText));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safe = (state.firmName || 'firm').replace(/[^a-zA-Z0-9]+/g, '_');
+      a.download = `GSTR3B_${safe}_${state.period}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('PDF download error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⬇ Download GSTR-3B PDF (Portal Format)';
+    }
+  }
 
   async function download() {
     if (!state.computation) return;

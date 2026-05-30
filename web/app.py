@@ -29,6 +29,7 @@ from preflight import run_all_preflight_checks
 from gstr2b_reader import parse_gstr2b
 from gstr3b_compute import compute_gstr3b
 from gstr3b_excel_writer import write_gstr3b_excel
+from gstr3b_pdf_writer import write_gstr3b_pdf
 from project_store import ProjectStore, KIND_LABELS
 import io
 
@@ -380,6 +381,61 @@ def api_gstr3b_download():
         out_path.name,
         as_attachment=True,
         download_name=out_path.name,
+    )
+
+
+@app.route("/api/gstr3b/download-pdf", methods=["POST"])
+@login_required
+def api_gstr3b_download_pdf():
+    """Render a portal-style GSTR-3B PDF and return it as a download."""
+    payload = request.get_json(silent=True) or {}
+    firm = payload.get("firm") or {}
+    period = payload.get("period") or ""
+    inputs = payload.get("inputs") or {}
+    gstr2b = payload.get("gstr2b") or {}
+    # Optional row-level breakdowns the client can pass to populate Tables 3.1, 3.1.1,
+    # 3.2, 5, 5.1. If absent, those rows render as zero.
+    supplies_3_1     = payload.get("supplies_3_1")
+    ecom_3_1_1       = payload.get("ecom_3_1_1")
+    inter_state_3_2  = payload.get("inter_state_3_2")
+    exempt_inward_5  = payload.get("exempt_inward_5")
+    interest_late_fee = payload.get("interest_late_fee")
+
+    try:
+        computation = compute_gstr3b(inputs)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Compute failed: {e}"}), 500
+
+    period_label = period_to_label(period) if period else period
+    safe = "".join(c if c.isalnum() else "_" for c in (firm.get("name") or "firm"))
+    out_path = OUTPUT_DIR / f"GSTR3B_{safe}_{period}_{datetime.now().strftime('%H%M%S')}.pdf"
+
+    try:
+        write_gstr3b_pdf(
+            out_path, firm, period_label, gstr2b, computation,
+            supplies_3_1=supplies_3_1, ecom_3_1_1=ecom_3_1_1,
+            inter_state_3_2=inter_state_3_2,
+            exempt_inward_5=exempt_inward_5,
+            interest_late_fee=interest_late_fee,
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"PDF generation failed: {e}"}), 500
+
+    # Save to Supabase project archive (best-effort)
+    try:
+        firm_gstin_str = (firm.get("gstin") or "").upper()
+        firm_uuid = firms.get_uuid(firm_gstin_str)
+        if firm_uuid and period:
+            project = projects.get_or_create(
+                firm_uuid=firm_uuid, period=period, period_label=period_label)
+            projects.add_file_from_path(
+                project["id"], "gstr3b_pdf", out_path, filename=out_path.name)
+    except Exception as _e:
+        app.logger.warning(f"Supabase GSTR-3B PDF upload failed: {_e}")
+
+    return send_from_directory(
+        out_path.parent, out_path.name,
+        as_attachment=True, download_name=out_path.name,
     )
 
 
