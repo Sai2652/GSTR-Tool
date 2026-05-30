@@ -18,12 +18,13 @@ from collections import defaultdict
 
 
 def _doc_key(row):
-    """Document identity = (GSTIN, document_no, document_date, doc_type)."""
+    """Document identity = (GSTIN, document_no, document_date, doc_type, rchrg)."""
     return (
         str(row.get("corrected_gstin") or row.get("gstin") or "").strip(),
         str(row.get("invoice_no", "")).strip(),
         pd.to_datetime(row.get("invoice_date")).date() if pd.notna(row.get("invoice_date")) else None,
         str(row.get("doc_type_canonical", "INV") or "INV"),
+        str(row.get("reverse_charge", "N") or "N").upper(),
     )
 
 
@@ -36,6 +37,7 @@ def consolidate_invoices(df: pd.DataFrame) -> list:
     """
     docs = defaultdict(lambda: {
         "doc_type": "INV",
+        "reverse_charge": "N",
         "gstin": "",
         "invoice_no": "",
         "invoice_date": None,
@@ -68,6 +70,7 @@ def consolidate_invoices(df: pd.DataFrame) -> list:
         doc = docs[key]
 
         doc["doc_type"] = key[3]
+        doc["reverse_charge"] = key[4]
         doc["gstin"] = key[0]
         doc["invoice_no"] = key[1]
         doc["invoice_date"] = key[2]

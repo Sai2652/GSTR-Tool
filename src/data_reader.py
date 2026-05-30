@@ -48,6 +48,11 @@ COLUMN_MAP = {
     "Original Invoice No": "orig_invoice_no",
     "Original Invoice Date": "orig_invoice_date",
     "Original Invoice Date.": "orig_invoice_date",
+    # Reverse Charge flag (Section 9(3) / 9(4)) — Y/N per invoice row
+    "Reverse Charge": "reverse_charge",
+    "Reverse Charge?": "reverse_charge",
+    "RCM": "reverse_charge",
+    "Rev Charge": "reverse_charge",
 }
 
 
@@ -128,8 +133,24 @@ def read_sales(path: str) -> pd.DataFrame:
     # Classify document type: 'INV' (regular invoice), 'C' (credit note), 'D' (debit note)
     df["doc_type_canonical"] = df.apply(_classify_doc_type, axis=1)
 
+    # Normalize reverse-charge flag to "Y" / "N"
+    if "reverse_charge" in df.columns:
+        df["reverse_charge"] = df["reverse_charge"].apply(_normalize_rchrg)
+    else:
+        df["reverse_charge"] = "N"
+
     df = df.reset_index(drop=True)
     return df
+
+
+def _normalize_rchrg(v) -> str:
+    """Normalize any truthy/Y/Yes/1/True to 'Y'; everything else to 'N'."""
+    if v is None:
+        return "N"
+    s = str(v).strip().upper()
+    if s in ("Y", "YES", "TRUE", "1", "REVERSE CHARGE", "RCM"):
+        return "Y"
+    return "N"
 
 
 # ----- Document type classification (needed for CDNR / credit notes) ----

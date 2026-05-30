@@ -33,8 +33,24 @@ def build_master_list(df: pd.DataFrame) -> dict:
     return canonical
 
 
+HSN_TURNOVER_THRESHOLD = 5_00_00_000  # Rs 5 crore — Notification 78/2020-CT
+
+
+def _hsn_min_digits(annual_turnover: float | None) -> int:
+    """
+    Per Notification 78/2020-CT (effective 1-Apr-2021):
+      - Turnover > Rs 5 crore: 6-digit HSN mandatory on B2B and B2C
+      - Turnover <= Rs 5 crore: 4-digit HSN mandatory on B2B
+    If turnover is unknown, fall back to 4 (the universal minimum for B2B).
+    """
+    if annual_turnover is None:
+        return 4
+    return 6 if annual_turnover >= HSN_TURNOVER_THRESHOLD else 4
+
+
 def validate_dataframe(df: pd.DataFrame, firm_state_code: str = "29",
-                       external_cache: dict = None) -> tuple:
+                       external_cache: dict = None,
+                       annual_turnover: float | None = None) -> tuple:
     """
     Runs validation per row.
 
@@ -55,6 +71,8 @@ def validate_dataframe(df: pd.DataFrame, firm_state_code: str = "29",
         for g, name in external_cache.items():
             if g not in master and name:
                 master[g] = name
+
+    hsn_min = _hsn_min_digits(annual_turnover)
 
     annotations = []
     exceptions = []
@@ -120,6 +138,19 @@ def validate_dataframe(df: pd.DataFrame, firm_state_code: str = "29",
             ann["is_b2b"] = True
             cust_state = get_state_code(ann["corrected_gstin"])
             ann["is_interstate"] = cust_state != firm_state_code
+
+        # ---- HSN length check (Notification 78/2020-CT) ----
+        hsn_raw = str(row.get("hsn", "") or "").strip()
+        # Strip non-digit chars (some sheets carry " 9989 " or "9989.0")
+        hsn_digits = "".join(ch for ch in hsn_raw if ch.isdigit())
+        if hsn_digits and len(hsn_digits) < hsn_min:
+            ann["issues"].append(
+                f"HSN '{hsn_raw}' has {len(hsn_digits)} digits; "
+                f"{hsn_min}-digit HSN required"
+                + (f" (turnover > Rs 5 cr)" if hsn_min == 6 else "")
+            )
+        elif not hsn_digits and ann["is_b2b"]:
+            ann["issues"].append("HSN missing on B2B invoice")
 
         annotations.append(ann)
 

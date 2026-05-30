@@ -15,6 +15,7 @@ Public API:
 """
 from __future__ import annotations
 
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -227,4 +228,109 @@ def parse_gstr2b(path: str | Path) -> Dict[str, Any]:
         except Exception as e:
             result["warnings"].append(f"Could not parse '{sheet_name}': {e}")
 
+    # Section 16(4): ITC on any prior-FY invoice cannot be claimed after
+    # 30 November of the following FY (or the date of filing of the annual
+    # return, whichever is earlier). We scan detail sheets for invoice dates
+    # belonging to a prior FY relative to the 2B period and flag them.
+    try:
+        prior_fy_count, examples = _scan_prior_fy_invoices(wb, result.get("period", ""))
+        if prior_fy_count:
+            result["warnings"].append(
+                f"Section 16(4): {prior_fy_count} invoice(s) found from a prior "
+                f"financial year. ITC cannot be claimed after 30-Nov of the FY "
+                f"following the invoice's FY. Examples: {', '.join(examples[:3])}"
+            )
+    except Exception as e:
+        result["warnings"].append(f"Could not run Section 16(4) check: {e}")
+
     return result
+
+
+# --- Section 16(4) helpers ------------------------------------------------
+
+def _fy_of(d: date) -> int:
+    """Indian financial year start year for a date (Apr-Mar)."""
+    return d.year if d.month >= 4 else d.year - 1
+
+
+def _period_fy(period: str) -> Optional[int]:
+    """GSTR-2B period is 'MMYYYY' (e.g. '052026'). Return FY start year."""
+    s = (period or "").strip()
+    if len(s) == 6 and s.isdigit():
+        mm, yyyy = int(s[:2]), int(s[2:])
+        return yyyy if mm >= 4 else yyyy - 1
+    return None
+
+
+def _scan_prior_fy_invoices(wb, period: str) -> tuple[int, list[str]]:
+    """
+    Scan B2B / B2BA / CDNR / IMPG detail sheets for invoice dates that fall in
+    an FY earlier than the 2B period's FY. Returns (count, sample_strings).
+    """
+    period_fy = _period_fy(period)
+    if period_fy is None:
+        return 0, []
+
+    DETAIL_SHEETS = ("B2B", "B2BA", "CDNR", "CDNRA", "IMPG", "IMPGSEZ")
+    count = 0
+    samples: list[str] = []
+    for name in wb.sheetnames:
+        if name.strip().upper() not in DETAIL_SHEETS:
+            continue
+        ws = wb[name]
+        # Find the date column by header text (typically "Invoice date" or "Note date")
+        header_row = _find_header_row(ws)
+        if header_row is None:
+            continue
+        date_col = _find_col(ws, header_row, ("invoice date", "note date", "doc date"))
+        inum_col = _find_col(ws, header_row, ("invoice number", "note number", "doc number"))
+        if date_col is None:
+            continue
+        for r in range(header_row + 1, ws.max_row + 1):
+            v = ws.cell(r, date_col).value
+            d = _to_date(v)
+            if d is None:
+                continue
+            if _fy_of(d) < period_fy:
+                count += 1
+                if len(samples) < 5 and inum_col:
+                    inum = ws.cell(r, inum_col).value
+                    samples.append(f"{inum} dt {d.strftime('%d-%m-%Y')}")
+    return count, samples
+
+
+def _find_header_row(ws) -> Optional[int]:
+    """Detail sheets have a multi-row header; find the row containing 'GSTIN'."""
+    for r in range(1, min(15, ws.max_row + 1)):
+        for c in range(1, min(20, ws.max_column + 1)):
+            v = ws.cell(r, c).value
+            if v and "GSTIN" in str(v).upper():
+                return r
+    return None
+
+
+def _find_col(ws, header_row: int, keywords: tuple[str, ...]) -> Optional[int]:
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(header_row, c).value
+        if not v:
+            continue
+        s = str(v).lower()
+        if any(k in s for k in keywords):
+            return c
+    return None
+
+
+def _to_date(v) -> Optional[date]:
+    if v is None or v == "":
+        return None
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    s = str(v).strip()
+    for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None

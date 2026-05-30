@@ -962,8 +962,10 @@ def _process_one(file, firm, period, period_start, period_end, batch_dir):
     # Pull existing cache as an external reference (for name-mismatch checks
     # on customers seen in past months but not in this sheet's master list)
     cache_dict = {c["gstin"]: c["name"] for c in customers.list_all()}
+    firm_turnover = firm.get("annual_turnover") if isinstance(firm, dict) else None
     df, exceptions, master = validate_dataframe(df, firm_state_code=firm_gstin[:2],
-                                                external_cache=cache_dict)
+                                                external_cache=cache_dict,
+                                                annual_turnover=firm_turnover)
 
     # Persist all valid GSTIN/name pairs to the long-term customer cache.
     cache_updates = customers.bulk_observe(list(master.items()))
@@ -1074,8 +1076,10 @@ def _preview_one(file, firm, period, period_start, period_end, timestamp):
     self_invoice_rows = int((df["gstin"].str.upper().str.strip() == firm_gstin).sum())
 
     cache_dict = {c["gstin"]: c["name"] for c in customers.list_all()}
+    firm_turnover = firm.get("annual_turnover") if isinstance(firm, dict) else None
     df_validated, exceptions, master = validate_dataframe(
-        df, firm_state_code=firm_gstin[:2], external_cache=cache_dict)
+        df, firm_state_code=firm_gstin[:2], external_cache=cache_dict,
+        annual_turnover=firm_turnover)
 
     cache_updates = customers.bulk_observe(list(master.items()))
 

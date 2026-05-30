@@ -187,7 +187,7 @@ def build_b2b_section(invoices: list) -> list:
                 "idt": _format_date(inv["invoice_date"]),
                 "val": _num(inv["invoice_value"]),
                 "pos": _pos(inv["place_of_supply"]),
-                "rchrg": "N",
+                "rchrg": str(inv.get("reverse_charge", "N") or "N").upper(),
                 "inv_typ": "R",
                 "itms": itms,
             })
@@ -321,7 +321,7 @@ def build_cdnr_section(notes: list) -> list:
                 entry["idt"] = _format_date(note["orig_invoice_date"])
             entry["val"] = _num(note["invoice_value"])
             entry["pos"] = _pos(note["place_of_supply"])
-            entry["rchrg"] = "N"
+            entry["rchrg"] = str(note.get("reverse_charge", "N") or "N").upper()
             entry["inv_typ"] = "R"
             entry["itms"] = itms
             nt_arr.append(entry)
