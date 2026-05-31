@@ -180,13 +180,14 @@
                         {%- if f.kind == 'sales_register' %} sales
                         {%- elif f.kind == 'gstr1_json' or f.kind == 'gstr1_report' %} gstr1
                         {%- elif f.kind == 'gstr2b_input' %} gstr2b
-                        {%- elif f.kind == 'gstr3b_excel' %} gstr3b
+                        {%- elif f.kind == 'gstr3b_excel' or f.kind == 'gstr3b_pdf' %} gstr3b
                         {%- endif %}">
                         {%- if f.kind == 'sales_register' %}SR
                         {%- elif f.kind == 'gstr1_json' %}G1J
                         {%- elif f.kind == 'gstr1_report' %}G1R
                         {%- elif f.kind == 'gstr2b_input' %}G2B
                         {%- elif f.kind == 'gstr3b_excel' %}G3B
+                        {%- elif f.kind == 'gstr3b_pdf' %}PDF
                         {%- endif -%}
                       </div>
                       <div class="file-info">
