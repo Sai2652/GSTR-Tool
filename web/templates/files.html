@@ -159,7 +159,16 @@
           {% for proj in f.projects %}
             <div class="period-card">
               <div class="period-head">
-                <div class="period-label">{{ proj.period_label or proj.period }}</div>
+                <div class="period-label">
+                  {{ proj.period_label or proj.period }}
+                  {% set filings = (proj.meta or {}).get('filings', {}) %}
+                  {% if filings.get('gstr1', {}).get('filed') %}
+                    <span style="display:inline-block;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;margin-left:6px;">GSTR-1 FILED</span>
+                  {% endif %}
+                  {% if filings.get('gstr3b', {}).get('filed') %}
+                    <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;margin-left:6px;">GSTR-3B FILED</span>
+                  {% endif %}
+                </div>
                 <div class="period-meta">{{ proj.files|length }} file{{ 's' if proj.files|length != 1 else '' }}</div>
               </div>
 
