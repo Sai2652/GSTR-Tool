@@ -1006,6 +1006,20 @@ def api_preview():
         if not p.get("ok"):
             response_previews.append({k: v for k, v in p.items() if k != "trace"})
             continue
+        # Look up previous-period exclusions for this firm (carry-forward)
+        carried = []
+        try:
+            firm = firms.get(p["firm_id"])
+            if firm:
+                prev_p = _prev_period(period)
+                if prev_p:
+                    prev_proj = projects.find_project(firm["id"], prev_p)
+                    if prev_proj:
+                        prev_meta = prev_proj.get("meta") or {}
+                        carried = prev_meta.get("excluded_invoices") or []
+        except Exception as _e:
+            app.logger.warning(f"Carry-forward lookup failed: {_e}")
+
         response_previews.append({
             "ok": True,
             "firm_id": p["firm_id"],
@@ -1014,7 +1028,9 @@ def api_preview():
             "stats": p["stats"],
             "warnings": p["warnings"],
             "preflight": p["preflight_summary"],
-            "invoices": p["invoices_preview"],   # serialized for UI
+            "invoices": p["invoices_preview"],
+            "carried_forward": carried,
+            "carried_period": _prev_period(period),
         })
 
     return jsonify({
