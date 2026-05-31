@@ -75,6 +75,83 @@
     }
   }
 
+  function saveGstr3bState() {
+    if (!state.firmId || !state.period) return;
+    const payload = {
+      firm: state.firmId, period: state.period, kind: 'gstr3b',
+      state: {
+        // Source data
+        gstr2bRaw: state.gstr2bRaw || null,
+        // User inputs
+        output_tax: {
+          igst: +$('out-igst').value || 0,
+          cgst: +$('out-cgst').value || 0,
+          sgst: +$('out-sgst').value || 0,
+          cess: +$('out-cess').value || 0,
+        },
+        opening_balance: {
+          igst: +$('open-igst').value || 0,
+          cgst: +$('open-cgst').value || 0,
+          sgst: +$('open-sgst').value || 0,
+          cess: +$('open-cess').value || 0,
+        },
+        cross_order: $('cross-order').value,
+        invoiceState: state.invoiceState || {},
+        // Cached GSTR-1 breakdown (for PDF Tables 3.1/3.2)
+        supplies_3_1: state.supplies_3_1 || null,
+        inter_state_3_2: state.inter_state_3_2 || null,
+      },
+    };
+    return fetch('/api/projects/save-state', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    }).catch(err => console.warn('save state failed', err));
+  }
+
+  async function loadGstr3bState() {
+    if (!state.firmId || !state.period) return;
+    try {
+      const res = await fetch('/api/projects/load-state?firm=' +
+        encodeURIComponent(state.firmId) + '&period=' +
+        encodeURIComponent(state.period) + '&kind=gstr3b');
+      const j = await res.json();
+      if (!j.ok || !j.found) return;
+      const s = j.state || {};
+      // Restore inputs
+      if (s.output_tax) {
+        $('out-igst').value = s.output_tax.igst || 0;
+        $('out-cgst').value = s.output_tax.cgst || 0;
+        $('out-sgst').value = s.output_tax.sgst || 0;
+        $('out-cess').value = s.output_tax.cess || 0;
+      }
+      if (s.opening_balance) {
+        $('open-igst').value = s.opening_balance.igst || 0;
+        $('open-cgst').value = s.opening_balance.cgst || 0;
+        $('open-sgst').value = s.opening_balance.sgst || 0;
+        $('open-cess').value = s.opening_balance.cess || 0;
+      }
+      if (s.cross_order) $('cross-order').value = s.cross_order;
+      if (s.supplies_3_1)    state.supplies_3_1 = s.supplies_3_1;
+      if (s.inter_state_3_2) state.inter_state_3_2 = s.inter_state_3_2;
+      // Restore parsed GSTR-2B + invoice claim/reverse state
+      if (s.gstr2bRaw) {
+        state.gstr2bRaw = s.gstr2bRaw;
+        $('parse-status').innerHTML =
+          '<div class="g3-info">✓ Restored from saved state. Review below.</div>';
+        renderItcReview();
+        renderInvoiceList();
+        if (s.invoiceState && Object.keys(s.invoiceState).length) {
+          state.invoiceState = s.invoiceState;
+          drawInvoiceRows();
+          updateInvoiceTotals();
+        }
+        enableStep(3); enableStep(4); enableStep(5); enableStep(6);
+      }
+    } catch (err) {
+      console.warn('load state failed', err);
+    }
+  }
+
   async function checkProjectStatus() {
     try {
       const url = '/api/projects/status?firm=' + encodeURIComponent(state.firmId)
