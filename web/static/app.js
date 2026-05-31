@@ -151,6 +151,7 @@ refreshProcessButton();
 let currentBatchId = null;
 let currentPreviews = [];      // array of preview objects from server
 let currentExclusions = {};    // firm_id -> Set of doc keys
+let currentOverrides = {};     // firm_id -> { doc_key: {supply_type, reverse_charge} }
 let currentPeriodLabel = '';
 
 if (processBtn) {
