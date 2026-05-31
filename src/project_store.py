@@ -84,6 +84,57 @@ class ProjectStore:
                 .order("period", desc=True).execute())
         return resp.data or []
 
+    def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
+        resp = (self._client.table("projects").select("*")
+                .eq("id", project_id).limit(1).execute())
+        return resp.data[0] if resp.data else None
+
+    def find_project(self, firm_uuid: str, period: str) -> Optional[Dict[str, Any]]:
+        if not firm_uuid or not period:
+            return None
+        resp = (self._client.table("projects").select("*")
+                .eq("firm_id", firm_uuid).eq("period", period)
+                .limit(1).execute())
+        return resp.data[0] if resp.data else None
+
+    def mark_filed(self, project_id: str, return_type: str,
+                   arn: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Mark a return as filed. return_type is 'gstr1' or 'gstr3b'.
+        Stores filed flag, timestamp, and optional ARN inside the project's
+        `meta` JSONB. (No schema change required.)
+        """
+        from datetime import datetime, timezone
+        proj = self.get_project(project_id)
+        if not proj:
+            raise KeyError(f"Project {project_id} not found")
+        meta = (proj.get("meta") or {})
+        meta.setdefault("filings", {})
+        meta["filings"][return_type] = {
+            "filed": True,
+            "filed_at": datetime.now(timezone.utc).isoformat(),
+            "arn": arn or "",
+        }
+        resp = (self._client.table("projects")
+                .update({"meta": meta}).eq("id", project_id).execute())
+        return resp.data[0] if resp.data else proj
+
+    def mark_unfiled(self, project_id: str, return_type: str) -> Dict[str, Any]:
+        proj = self.get_project(project_id)
+        if not proj:
+            raise KeyError(f"Project {project_id} not found")
+        meta = (proj.get("meta") or {})
+        if "filings" in meta and return_type in meta["filings"]:
+            meta["filings"][return_type] = {"filed": False}
+        resp = (self._client.table("projects")
+                .update({"meta": meta}).eq("id", project_id).execute())
+        return resp.data[0] if resp.data else proj
+
+    def is_filed(self, project: Dict[str, Any], return_type: str) -> bool:
+        meta = (project or {}).get("meta") or {}
+        f = (meta.get("filings") or {}).get(return_type) or {}
+        return bool(f.get("filed"))
+
     def delete_project(self, project_id: str) -> bool:
         # Cascade deletes project_files rows; clean up storage manually
         files = self.list_files(project_id)
