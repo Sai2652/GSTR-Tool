@@ -379,8 +379,9 @@ def _gstr1_to_3b_breakdown(g: dict) -> dict:
             sign = -1 if (nt.get("ntty") or "").upper() == "C" else 1
             if (nt.get("rchrg") or "N").upper() == "Y":
                 continue
+            note_target = b if (nt.get("inv_typ") or "R").upper() in ZERO_RATED_INV_TYPES else a
             for itm in nt.get("itms", []):
-                add(a, itm.get("itm_det", {}), sign=sign)
+                add(note_target, itm.get("itm_det", {}), sign=sign)
     for nt in (g.get("cdnur") or []):
         sign = -1 if (nt.get("ntty") or "").upper() == "C" else 1
         ur_typ = (nt.get("typ") or "").upper()
