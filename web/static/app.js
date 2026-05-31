@@ -466,6 +466,58 @@ function renderInvoiceRow(inv) {
   `;
 }
 
+function renderCarryForwardBanner(p) {
+  const cf = p.carried_forward || [];
+  if (!cf.length) return '';
+  const prev = p.carried_period || 'previous month';
+  const rows = cf.map((inv, idx) => `
+    <tr data-cf-idx="${idx}">
+      <td style="padding:6px 8px;">
+        <input type="checkbox" class="cf-include" data-firm-id="${escapeHtml(p.firm_id)}" data-idx="${idx}">
+      </td>
+      <td style="padding:6px 8px;">${escapeHtml(inv.invoice_no || '')}</td>
+      <td style="padding:6px 8px;">${escapeHtml(inv.invoice_date || '')}</td>
+      <td style="padding:6px 8px;">${escapeHtml(inv.customer_name || '—')}</td>
+      <td style="padding:6px 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px;">${escapeHtml(inv.gstin || '')}</td>
+      <td style="padding:6px 8px; text-align:right;">${inr(inv.taxable_value)}</td>
+      <td style="padding:6px 8px; text-align:right;">${inr(inv.total_tax)}</td>
+      <td style="padding:6px 8px; text-align:right;"><b>${inr(inv.invoice_value)}</b></td>
+    </tr>
+  `).join('');
+  return `
+    <details class="carry-forward-banner" style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:12px 14px;margin:10px 0;">
+      <summary style="cursor:pointer;font-weight:600;color:#92400e;">
+        ⚠ ${cf.length} invoice${cf.length !== 1 ? 's' : ''} excluded from ${prev} — review for this month
+      </summary>
+      <div style="margin-top:10px;font-size:12px;color:#78350f;">
+        Tick the invoices you want to <b>include in the current month's GSTR-1</b>. These will be added to your current preview when you click "Apply".
+      </div>
+      <table style="margin-top:8px;width:100%;border-collapse:collapse;font-size:12px;background:#fffbeb;">
+        <thead>
+          <tr style="background:#fcd34d;color:#78350f;">
+            <th style="padding:6px 8px;text-align:left;width:30px;">Include?</th>
+            <th style="padding:6px 8px;text-align:left;">Invoice</th>
+            <th style="padding:6px 8px;text-align:left;">Date</th>
+            <th style="padding:6px 8px;text-align:left;">Customer</th>
+            <th style="padding:6px 8px;text-align:left;">GSTIN</th>
+            <th style="padding:6px 8px;text-align:right;">Taxable</th>
+            <th style="padding:6px 8px;text-align:right;">Tax</th>
+            <th style="padding:6px 8px;text-align:right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;">
+        <button type="button" class="cf-apply-btn" data-firm-id="${escapeHtml(p.firm_id)}"
+                style="padding:6px 14px;background:#92400e;color:#fff;border:none;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;">
+          Apply Selected to Current Month
+        </button>
+        <span class="cf-status" style="font-size:11.5px;color:#78350f;"></span>
+      </div>
+    </details>
+  `;
+}
+
 const SUPPLY_TYPE_OPTIONS = [
   ['REGULAR',      'Regular (taxable)'],
   ['SEZ_WPAY',     'SEZ — with payment'],
