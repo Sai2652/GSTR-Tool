@@ -1087,6 +1087,45 @@ def api_generate():
                 "trace": traceback.format_exc(),
             })
 
+    # Persist excluded invoices into projects.meta for next-month carry-forward.
+    for preview in state["previews"]:
+        if not preview.get("ok"):
+            continue
+        firm_id = preview["firm_id"]
+        excluded_keys = set(exclusions.get(firm_id, []))
+        if not excluded_keys:
+            continue
+        try:
+            firm = firms.get(firm_id)
+            if not firm:
+                continue
+            firm_uuid = firm["id"]
+            proj = projects.get_or_create(
+                firm_uuid=firm_uuid, period=period,
+                period_label=period_to_label(period))
+            ex_list = []
+            for d in preview.get("_invoices") or []:
+                if _doc_key_str(d) not in excluded_keys:
+                    continue
+                ex_list.append({
+                    "key": _doc_key_str(d),
+                    "doc_type": d.get("doc_type", "INV"),
+                    "invoice_no": d.get("invoice_no", ""),
+                    "invoice_date": d["invoice_date"].strftime("%d-%m-%Y") if d.get("invoice_date") else "",
+                    "gstin": d.get("gstin", ""),
+                    "customer_name": d.get("customer_name", ""),
+                    "taxable_value": float(d.get("invoice_total_taxable", 0) or 0),
+                    "total_tax": float(d.get("invoice_total_tax", 0) or 0),
+                    "invoice_value": float(d.get("invoice_value", 0) or 0),
+                    "supply_type": d.get("supply_type", "REGULAR"),
+                })
+            full = projects.get_project(proj["id"]) or {}
+            meta = full.get("meta") or {}
+            meta["excluded_invoices"] = ex_list
+            projects._client.table("projects").update({"meta": meta}).eq("id", proj["id"]).execute()
+        except Exception as _e:
+            app.logger.warning(f"Could not persist exclusions for firm {firm_id}: {_e}")
+
     zip_path = batch_dir / f"GSTR1_Batch_{period}_{timestamp}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         for r in results:
