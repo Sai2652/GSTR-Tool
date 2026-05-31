@@ -197,6 +197,7 @@ if (processBtn) {
       currentBatchId = data.batch_id;
       currentPreviews = data.previews;
       currentExclusions = {};
+      currentOverrides = {};
       currentPeriodLabel = data.period_label;
       renderReview(data);
     } catch (err) {
