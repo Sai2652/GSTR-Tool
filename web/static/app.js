@@ -401,6 +401,57 @@ function renderReview(data) {
         cb.dispatchEvent(new Event('change'));
       });
     });
+    // Carry-forward Apply handler
+    const cfApplyBtn = div.querySelector('.cf-apply-btn');
+    if (cfApplyBtn) {
+      cfApplyBtn.addEventListener('click', async () => {
+        const banner = div.querySelector('.carry-forward-banner');
+        const cfStatus = banner.querySelector('.cf-status');
+        const picked = [];
+        banner.querySelectorAll('.cf-include').forEach(cb => {
+          if (cb.checked) {
+            const idx = parseInt(cb.dataset.idx, 10);
+            const item = (p.carried_forward || [])[idx];
+            if (item) picked.push(item);
+          }
+        });
+        if (!picked.length) {
+          cfStatus.textContent = 'Pick at least one invoice first.';
+          return;
+        }
+        cfApplyBtn.disabled = true;
+        cfStatus.textContent = 'Adding…';
+        try {
+          const res = await fetch('/api/carry_forward/apply', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              batch_id: currentBatchId,
+              firm_id: p.firm_id,
+              items: picked,
+            }),
+          });
+          const j = await res.json();
+          if (!j.ok) {
+            cfStatus.textContent = 'Failed: ' + (j.error || 'unknown');
+            cfApplyBtn.disabled = false;
+            return;
+          }
+          cfStatus.innerHTML = '<span style="color:#15803d;">✓ Added ' + j.added + ' invoice(s). Refresh preview to see them in the table.</span>';
+          banner.querySelectorAll('.cf-include').forEach(cb => { cb.checked = false; cb.disabled = true; });
+          // Append new rows to the invoice table directly
+          const tbody = table.querySelector('tbody');
+          (j.invoices || []).forEach(inv => {
+            if (tbody.querySelector(`tr[data-key="${inv.key}"]`)) return;
+            tbody.insertAdjacentHTML('beforeend', renderInvoiceRow(inv));
+          });
+          recompute();
+        } catch (err) {
+          cfStatus.textContent = 'Network error: ' + err.message;
+          cfApplyBtn.disabled = false;
+        }
+      });
+    }
+
     // Supply Type dropdowns
     table.querySelectorAll('.row-supply-type').forEach(sel => {
       sel.addEventListener('change', (e) => {
