@@ -1157,6 +1157,31 @@ def api_generate():
                 "trace": traceback.format_exc(),
             })
 
+    # Persist a snapshot of the full review state (per firm) for resume-on-revisit.
+    for preview in state["previews"]:
+        if not preview.get("ok"):
+            continue
+        try:
+            firm = firms.get(preview["firm_id"])
+            if not firm:
+                continue
+            proj = projects.get_or_create(
+                firm_uuid=firm["id"], period=period,
+                period_label=period_to_label(period))
+            full_proj = projects.get_project(proj["id"]) or {}
+            meta = full_proj.get("meta") or {}
+            meta.setdefault("state", {})
+            # Lightweight snapshot — just invoices_preview + overrides + exclusions
+            meta["state"]["gstr1"] = {
+                "invoices_preview": preview.get("invoices_preview") or [],
+                "exclusions": sorted(list(exclusions.get(preview["firm_id"], []))),
+                "overrides": overrides.get(preview["firm_id"]) or {},
+                "saved_at": datetime.now().isoformat(),
+            }
+            projects._client.table("projects").update({"meta": meta}).eq("id", proj["id"]).execute()
+        except Exception as _e:
+            app.logger.warning(f"GSTR-1 state save failed: {_e}")
+
     # Persist excluded invoices into projects.meta for next-month carry-forward.
     for preview in state["previews"]:
         if not preview.get("ok"):
