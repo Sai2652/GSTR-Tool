@@ -230,6 +230,12 @@ def parse_gstr2b(path: str | Path) -> Dict[str, Any]:
         except Exception as e:
             result["warnings"].append(f"Could not parse '{sheet_name}': {e}")
 
+    # Phase 4a: extract per-invoice detail rows from B2B/B2BA/CDNR/CDNRA/IMPG/IMPGSEZ
+    try:
+        result["invoices"] = _extract_invoice_details(wb)
+    except Exception as e:
+        result["warnings"].append(f"Could not extract invoice list: {e}")
+
     # Build the formal GSTR-3B Table 4 line breakdown.
     # Reference: Notification 14/2022-CT (Oct 2022) — restructured Table 4.
     try:
