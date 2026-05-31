@@ -371,22 +371,61 @@
   $('compute-btn').addEventListener('click', compute);
 
   function getInputs() {
-    // Build eligible ITC totals from user toggles
+    // Prefer per-invoice selections when invoice list exists; otherwise fall
+    // back to the category-level toggles.
     const eligible = { igst: 0, cgst: 0, sgst: 0, cess: 0 };
-    const avail = state.gstr2bRaw.itc_available;
-    CATEGORIES.forEach(c => {
-      const t = avail[c.key] || {};
-      TAX_HEADS.forEach(h => {
-        if (state.eligibility[c.key] && state.eligibility[c.key][h]) {
-          if (c.key === 'credit_notes') {
-            eligible[h] -= (t[h] || 0);  // credit notes reduce
+    let reversalBuckets = null; // { '4B1': {...}, '4B2': {...} } if invoice-level
+
+    const invoices = (state.gstr2bRaw && state.gstr2bRaw.invoices) || [];
+    if (invoices.length) {
+      // Invoice-level: tick = eligible; untick = reversal bucketed by reason
+      reversalBuckets = { '4B1': {igst:0,cgst:0,sgst:0,cess:0},
+                          '4B2': {igst:0,cgst:0,sgst:0,cess:0} };
+      const reasonBucket = Object.fromEntries(REVERSAL_REASONS.map(r => [r.value, r.bucket]));
+      invoices.forEach(inv => {
+        const st = state.invoiceState[inv.id] || { claim: true, reason: 'eligible' };
+        const sign = inv.category === 'credit_notes' ? -1 : 1;
+        if (st.claim) {
+          TAX_HEADS.forEach(h => { eligible[h] += sign * Number(inv[h] || 0); });
+        } else {
+          const bucket = reasonBucket[st.reason] || '4B2';
+          if (bucket === 'claim') {
+            TAX_HEADS.forEach(h => { eligible[h] += sign * Number(inv[h] || 0); });
           } else {
-            eligible[h] += (t[h] || 0);
+            TAX_HEADS.forEach(h => { reversalBuckets[bucket][h] += Math.abs(Number(inv[h] || 0)); });
           }
         }
       });
-    });
+    } else {
+      const avail = state.gstr2bRaw.itc_available;
+      CATEGORIES.forEach(c => {
+        const t = avail[c.key] || {};
+        TAX_HEADS.forEach(h => {
+          if (state.eligibility[c.key] && state.eligibility[c.key][h]) {
+            if (c.key === 'credit_notes') {
+              eligible[h] -= (t[h] || 0);
+            } else {
+              eligible[h] += (t[h] || 0);
+            }
+          }
+        });
+      });
+    }
     TAX_HEADS.forEach(h => eligible[h] = Math.max(0, Math.round(eligible[h] * 100) / 100));
+
+    // Reversal total: invoice-level if computed, else fall back to 2B reversal sheet total
+    let reversalTotal;
+    if (reversalBuckets) {
+      reversalTotal = {
+        igst: reversalBuckets['4B1'].igst + reversalBuckets['4B2'].igst,
+        cgst: reversalBuckets['4B1'].cgst + reversalBuckets['4B2'].cgst,
+        sgst: reversalBuckets['4B1'].sgst + reversalBuckets['4B2'].sgst,
+        cess: reversalBuckets['4B1'].cess + reversalBuckets['4B2'].cess,
+      };
+    } else {
+      reversalTotal = state.gstr2bRaw.itc_reversal.total || {igst:0,cgst:0,sgst:0,cess:0};
+    }
+    state.lastReversalBuckets = reversalBuckets;  // expose for PDF payload
 
     return {
       output_tax: {
@@ -396,7 +435,7 @@
         cess: +$('out-cess').value || 0,
       },
       itc_available: eligible,
-      itc_reversal: state.gstr2bRaw.itc_reversal.total || {igst:0,cgst:0,sgst:0,cess:0},
+      itc_reversal: reversalTotal,
       opening_balance: {
         igst: +$('open-igst').value || 0,
         cgst: +$('open-cgst').value || 0,
