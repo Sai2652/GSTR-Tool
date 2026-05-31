@@ -330,7 +330,10 @@ def build_cdnr_section(notes: list) -> list:
             entry["val"] = _num(note["invoice_value"])
             entry["pos"] = _pos(note["place_of_supply"])
             entry["rchrg"] = str(note.get("reverse_charge", "N") or "N").upper()
-            entry["inv_typ"] = "R"
+            # Carry inv_typ flag for SEZ / Deemed Export credit/debit notes
+            _sty = (note.get("supply_type") or "REGULAR").upper()
+            _typ_map = {"SEZ_WPAY": "SEWP", "SEZ_WOPAY": "SEWOP", "DEEMED": "DE"}
+            entry["inv_typ"] = _typ_map.get(_sty, "R")
             entry["itms"] = itms
             nt_arr.append(entry)
         cdnr.append({"ctin": ctin, "nt": nt_arr})
