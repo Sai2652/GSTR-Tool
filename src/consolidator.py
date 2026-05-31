@@ -149,7 +149,8 @@ def consolidate_invoices(df: pd.DataFrame) -> list:
     return result
 
 
-EXPORT_TYPES = {"EXPORT_WPAY", "EXPORT_WOPAY", "SEZ_WPAY", "SEZ_WOPAY"}
+EXPORT_TYPES = {"EXPORT_WPAY", "EXPORT_WOPAY"}    # routed to 'exp' section
+SEZ_TYPES = {"SEZ_WPAY", "SEZ_WOPAY", "DEEMED"}   # routed to 'b2b' with inv_typ
 NIL_TYPES = {"NIL", "EXEMPT", "NON_GST"}
 
 
