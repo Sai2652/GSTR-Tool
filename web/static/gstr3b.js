@@ -661,8 +661,8 @@
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      // Refresh project status so Mark-as-Filed button appears now that the
-      // project has been saved to the archive.
+      // Persist input state + refresh project status so Mark-as-Filed button shows up.
+      saveGstr3bState();
       checkProjectStatus();
     } catch (err) {
       alert('PDF download error: ' + err.message);
@@ -703,8 +703,8 @@
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      // Refresh project status so Mark-as-Filed button appears now that the
-      // project has been saved to the archive.
+      // Persist input state + refresh project status so Mark-as-Filed button shows up.
+      saveGstr3bState();
       checkProjectStatus();
     } catch (err) {
       alert('Download error: ' + err.message);
