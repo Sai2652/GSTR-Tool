@@ -1372,8 +1372,38 @@ def _doc_key_str(doc) -> str:
     return f"{doc.get('gstin','')}|{doc.get('invoice_no','')}|{date_part}|{doc.get('doc_type','INV')}"
 
 
+def _auto_supply_type(doc) -> str:
+    """
+    Infer supply_type from the numbers if user/Excel didn't set it.
+
+    Heuristic:
+      - taxable_value > 0 AND all of igst/cgst/sgst = 0  →  zero-rated
+        - if invoice is B2B (registered buyer)            →  SEZ-WOPAY
+        - else (unregistered / overseas buyer)            →  EXPORT-WOPAY
+      - taxable_value == 0 AND tax == 0  →  treat as NIL (likely nil-rated)
+      - otherwise                          →  REGULAR
+    User can override on the review screen.
+    """
+    explicit = (doc.get("supply_type") or "REGULAR").upper()
+    if explicit and explicit != "REGULAR":
+        return explicit
+    taxable = float(doc.get("invoice_total_taxable", 0) or 0)
+    tax = float(doc.get("invoice_total_tax", 0) or 0)
+    if taxable > 0 and tax <= 0.01:
+        if doc.get("is_b2b") and doc.get("gstin"):
+            return "SEZ_WOPAY"
+        return "EXPORT_WOPAY"
+    if taxable <= 0.01 and tax <= 0.01:
+        return "NIL"
+    return "REGULAR"
+
+
 def _serialize_invoice_for_ui(doc) -> dict:
     """Convert a consolidated doc to a UI-friendly dict (no defaultdicts, no Timestamps)."""
+    auto_type = _auto_supply_type(doc)
+    # Stash back so downstream generate() also sees the auto-detected value
+    if not doc.get("supply_type") or doc["supply_type"] == "REGULAR":
+        doc["supply_type"] = auto_type
     return {
         "key": _doc_key_str(doc),
         "doc_type": doc.get("doc_type", "INV"),
