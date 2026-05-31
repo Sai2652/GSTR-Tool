@@ -129,8 +129,8 @@ def compute_gstr3b(inputs: Dict[str, Any]) -> Dict[str, Any]:
     credit_pool = _sum_tax(net_itc, opening)
     credit_initial = dict(credit_pool)  # snapshot for "used" calculation later
 
-    # Working copy of liability (will be reduced as we apply credits)
-    liability = dict(output)
+    # Working copy of liability (RCM excluded — applied separately as cash)
+    liability = dict(output_other)
     setoff_steps = []
 
     def step(from_head: str, to_head: str, label: str):
