@@ -330,9 +330,13 @@ def _build_table_4(table4: Dict, st) -> List:
     t4 = table4 or {}
     z = _zero_tax()
 
-    def row(label: str, key: Optional[str], bold: bool = False):
-        s = t4.get(key, z) if key else z
+    def row(label: str, key: Optional[str], bold: bool = False,
+            section_header: bool = False):
         style = st["cellb"] if bold else st["cell"]
+        if section_header:
+            # Section header rows have blank cells for the tax columns
+            return [Paragraph(label, style), "", "", "", ""]
+        s = t4.get(key, z) if key else z
         return [
             Paragraph(label, style),
             _money(s.get("igst", 0)),
