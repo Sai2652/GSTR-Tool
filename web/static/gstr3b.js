@@ -68,6 +68,8 @@
       enableStep(2);
       // Auto-pull GSTR-1 output liability if available
       pullGstr1();
+      // Restore previously saved editorial state (if any)
+      loadGstr3bState();
       // Check whether this period is already filed
       checkProjectStatus();
     } else {
