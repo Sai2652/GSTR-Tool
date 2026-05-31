@@ -316,6 +316,8 @@ function renderReview(data) {
               <th class="col-num">Taxable</th>
               <th class="col-num">Tax</th>
               <th class="col-num">Total</th>
+              <th title="Supply Type — override per invoice if not tagged in Excel">Supply Type</th>
+              <th title="Reverse Charge applicable?">RCM</th>
               <th>Bucket</th>
               <th class="col-actions"></th>
             </tr>
