@@ -445,53 +445,148 @@ def _build_table_5_1(int_late: Optional[Dict[str, Dict[str, float]]], st) -> Lis
 
 # ---------- Table 6.1 ----------
 
-def _build_table_6_1(comp: Dict, st) -> List:
+def _build_table_6_1(comp: Dict, st,
+                     supplies_3_1: Optional[Dict] = None) -> List:
     """
-    Build Table 6.1 — Payment of tax.
-    Columns mimic the portal: Description | Tax payable | Paid through ITC (split) |
-                              Tax paid TDS/TCS | Tax/Cess paid in cash | Interest | Late fee
+    Portal layout for Table 6.1 — Payment of tax.
+
+    Two sub-sections, each with its own 4 tax-head rows:
+      (A) Other than reverse charge
+      (B) Reverse charge and supplies made u/s 9(5)
+
+    Columns:
+      Description | Tax payable | Adjustment of negative liability of previous
+      tax period | Net Tax Payable | Tax paid through ITC (IGST/CGST/SGST/Cess)
+      | Tax paid in cash | Interest paid in cash | Late fee paid in cash
     """
-    output = comp.get("output_tax", _zero_tax())
-    credit_used = comp.get("credit_used", _zero_tax())
+    output_total = comp.get("output_tax", _zero_tax())
     cash_payable = comp.get("cash_payable", _zero_tax())
     setoff_steps = comp.get("setoff_steps", [])
+
+    # Split output into (A) regular and (B) RCM portion.
+    # RCM tax payable comes from 3.1(d) — it's a self-liability on inward RCM
+    # supplies, paid only in CASH (no ITC offset allowed on the same period).
+    rcm_d = (supplies_3_1 or {}).get("3.1.d") or {}
+    rcm_tax = {h: float(rcm_d.get(h, 0) or 0) for h in ("igst", "cgst", "sgst", "cess")}
+    # Section (A) tax payable = total output - RCM-self portion
+    other_tax = {h: round(output_total.get(h, 0) - rcm_tax[h], 2)
+                 for h in ("igst", "cgst", "sgst", "cess")}
+    # Section (A) cash = total cash - RCM cash (RCM is fully cash, so subtract)
+    other_cash = {h: round(max(0.0, cash_payable.get(h, 0) - rcm_tax[h]), 2)
+                  for h in ("igst", "cgst", "sgst", "cess")}
 
     def itc_from_to(from_h: str, to_h: str) -> float:
         return sum(s["amount"] for s in setoff_steps
                    if s["from"].lower() == from_h and s["to"].lower() == to_h)
 
-    rows = []
-    for head_key, label in [("igst", "Integrated Tax"),
-                            ("cgst", "Central Tax"),
-                            ("sgst", "State/UT Tax"),
-                            ("cess", "Cess")]:
-        payable = output.get(head_key, 0.0)
-        # ITC paid via IGST/CGST/SGST/Cess into this head
-        paid_igst = itc_from_to("igst", head_key)
-        paid_cgst = itc_from_to("cgst", head_key)
-        paid_sgst = itc_from_to("sgst", head_key)
-        paid_cess = itc_from_to("cess", head_key)
-        cash = cash_payable.get(head_key, 0.0)
-        rows.append([
+    def head_row(label: str, payable: float, cash: float,
+                 itc_igst: float, itc_cgst: float, itc_sgst: float, itc_cess: float):
+        return [
             Paragraph(label, st["cellb"]),
             _money(payable),
-            _money(paid_igst), _money(paid_cgst),
-            _money(paid_sgst), _money(paid_cess),
-            "0.00",            # TDS/TCS
-            _money(cash),      # cash
-            "0.00",            # interest
-            "0.00",            # late fee
-        ])
-    headers = [
-        "Description", "Total\ntax\npayable",
-        "Paid through ITC — IGST", "CGST", "SGST", "Cess",
-        "TDS/TCS", "Tax paid\nin cash", "Interest", "Late fee"
+            _money(0.0),         # Adjustment of negative liability prev period
+            _money(payable),     # Net Tax Payable
+            _money(itc_igst), _money(itc_cgst), _money(itc_sgst), _money(itc_cess),
+            _money(cash),
+            _money(0.0),         # Interest paid in cash
+            _money(0.0),         # Late fee paid in cash
+        ]
+
+    sec_a_rows = []
+    for h, label in [("igst", "Integrated tax"), ("cgst", "Central tax"),
+                     ("sgst", "State/UT tax"), ("cess", "Cess")]:
+        sec_a_rows.append(head_row(
+            label,
+            other_tax[h], other_cash[h],
+            itc_from_to("igst", h), itc_from_to("cgst", h),
+            itc_from_to("sgst", h), itc_from_to("cess", h),
+        ))
+
+    # Section (B) — RCM. Tax paid in cash only; ITC columns are dashes.
+    def rcm_row(label: str, val: float):
+        return [
+            Paragraph(label, st["cellb"]),
+            _money(val),
+            _money(0.0),
+            _money(val),
+            "-", "-", "-", "-",
+            _money(val),
+            "-", "-",
+        ]
+
+    sec_b_rows = [
+        rcm_row("Integrated tax", rcm_tax["igst"]),
+        rcm_row("Central tax",    rcm_tax["cgst"]),
+        rcm_row("State/UT tax",   rcm_tax["sgst"]),
+        rcm_row("Cess",           rcm_tax["cess"]),
     ]
-    widths = [22 * mm, 15 * mm, 18 * mm, 14 * mm, 14 * mm, 12 * mm,
-              14 * mm, 16 * mm, 14 * mm, 14 * mm]
+
+    headers = [
+        "Description", "Tax\npayable", "Adjustment of\nneg. liability\nprev. period",
+        "Net Tax\nPayable",
+        "Tax paid through ITC — IGST", "CGST", "SGST", "Cess",
+        "Tax paid\nin cash", "Interest\npaid in cash", "Late fee\npaid in cash"
+    ]
+    widths = [20 * mm, 14 * mm, 17 * mm, 14 * mm,
+              17 * mm, 13 * mm, 13 * mm, 11 * mm,
+              14 * mm, 14 * mm, 14 * mm]
+
+    money_cols = set(range(1, len(headers)))
+
+    # Build single table with section-header rows interleaved
+    section_a_label = ["(A) Other than reverse charge"] + [""] * (len(headers) - 1)
+    section_b_label = ["(B) Reverse charge and supplies made u/s 9(5)"] + [""] * (len(headers) - 1)
+    body = [headers, section_a_label] + sec_a_rows + [section_b_label] + sec_b_rows
+    t = Table(body, colWidths=widths, repeatRows=1)
+    n_rows = len(body)
+    style = [
+        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8),
+        ("FONT", (0, 1), (-1, -1), "Helvetica", 8.5),
+        ("BACKGROUND", (0, 0), (-1, 0), HEADER_BG),
+        ("TEXTCOLOR",  (0, 0), (-1, 0), PORTAL_BLUE),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("BOX", (0, 0), (-1, -1), 0.6, BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING",   (0, 0), (-1, -1), 2.5),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 2.5),
+    ]
+    for c in money_cols:
+        style.append(("ALIGN", (c, 1), (c, -1), "RIGHT"))
+    # Section header rows styling
+    for r_idx in (1, 2 + len(sec_a_rows)):
+        style.append(("SPAN", (0, r_idx), (-1, r_idx)))
+        style.append(("BACKGROUND", (0, r_idx), (-1, r_idx), HEADER_BG))
+        style.append(("FONT", (0, r_idx), (-1, r_idx), "Helvetica-Bold", 8.5))
+        style.append(("TEXTCOLOR", (0, r_idx), (-1, r_idx), PORTAL_BLUE))
+        style.append(("ALIGN", (0, r_idx), (-1, r_idx), "LEFT"))
+    t.setStyle(TableStyle(style))
+
     return [
         Paragraph("6.1 Payment of tax", st["section"]),
-        _tax_table(headers, rows, widths, money_cols={1, 2, 3, 4, 5, 6, 7, 8, 9}),
+        t,
+        Spacer(1, 6),
+    ]
+
+
+def _build_breakup(comp: Dict, period_label: str, st) -> List:
+    """Breakup of tax liability declared (for interest computation)."""
+    output = comp.get("output_tax", _zero_tax())
+    rows = [[
+        period_label,
+        _money(output.get("igst", 0)),
+        _money(output.get("cgst", 0)),
+        _money(output.get("sgst", 0)),
+        _money(output.get("cess", 0)),
+    ]]
+    headers = ["Period", "Integrated tax", "Central tax", "State/UT tax", "Cess"]
+    widths = [50 * mm, 32 * mm, 32 * mm, 32 * mm, 30 * mm]
+    return [
+        Paragraph("Breakup of tax liability declared (for interest computation)",
+                  st["section"]),
+        _tax_table(headers, rows, widths, money_cols={1, 2, 3, 4}),
         Spacer(1, 6),
     ]
 
