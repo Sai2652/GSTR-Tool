@@ -306,6 +306,7 @@ function renderReview(data) {
       </div>
       ${warningsBanner}
       ${preflightBanner}
+      ${renderCarryForwardBanner(p)}
       <div class="invoice-table-wrap">
         <table class="invoice-table" data-firm-id="${escapeHtml(p.firm_id)}">
           <thead>
