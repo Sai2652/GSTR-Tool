@@ -177,12 +177,27 @@ def classify_invoices(invoices: list, b2cl_threshold: float = 250000.0) -> dict:
             buckets["nil"].append(inv)
             continue
 
-        # Exports / SEZ → 'exp' (CDNUR for export notes; portal handles them there)
+        # Exports → 'exp' section (CDNUR for export notes)
         if sty in EXPORT_TYPES:
             if is_note:
                 buckets["cdnur"].append(inv)
             else:
                 buckets["exp"].append(inv)
+            continue
+
+        # SEZ / Deemed Exports → 'b2b' with inv_typ flag (these stay registered-to-registered)
+        if sty in SEZ_TYPES:
+            if is_note:
+                if inv.get("is_b2b") and inv.get("gstin"):
+                    buckets["cdnr"].append(inv)
+                else:
+                    buckets["cdnur"].append(inv)
+            else:
+                if inv.get("is_b2b") and inv.get("gstin"):
+                    buckets["b2b"].append(inv)
+                else:
+                    # Without buyer GSTIN, fall back to exp section
+                    buckets["exp"].append(inv)
             continue
 
         if is_note:
