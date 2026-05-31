@@ -238,5 +238,37 @@
   </div>
 </footer>
 
+<script>
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.files-unlock-btn');
+  if (!btn) return;
+  if (!confirm('Unlock this filed period for editing? Both GSTR-1 and GSTR-3B filed flags will be cleared.')) return;
+  const pid = btn.dataset.projectId;
+  const wantG1 = btn.dataset.g1Filed === '1';
+  const wantG3 = btn.dataset.g3Filed === '1';
+  btn.disabled = true;
+  btn.textContent = 'Unlocking…';
+  try {
+    if (wantG1) {
+      await fetch('/api/projects/' + pid + '/unlock', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({return_type: 'gstr1'}),
+      });
+    }
+    if (wantG3) {
+      await fetch('/api/projects/' + pid + '/unlock', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({return_type: 'gstr3b'}),
+      });
+    }
+    location.reload();
+  } catch (err) {
+    alert('Unlock failed: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = '🔓 Unlock';
+  }
+});
+</script>
+
 </body>
 </html>
