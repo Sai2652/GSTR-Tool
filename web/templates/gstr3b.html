@@ -123,12 +123,58 @@
     <div id="parse-status" style="margin-top:10px;"></div>
   </div>
 
-  <!-- STEP 3: ITC Review with eligibility toggles -->
+  <!-- STEP 3: ITC Review with invoice-level toggles -->
   <div class="g3-step disabled" id="step-3">
     <h2><span class="num">3</span> Review ITC from GSTR-2B</h2>
     <div class="g3-info">
-      Untick any category you do <em>not</em> want to claim (e.g., if you've classified it as blocked credit under Section 17(5)). The unticked amounts move to the Reversal row.
+      Each invoice from your GSTR-2B is listed below. Tick to claim; choose a reversal reason if not claiming. Net Eligible / Reversal totals update live and feed into Table 4 of GSTR-3B.
     </div>
+    <div id="itc-invoice-toolbar" style="display:none;margin:10px 0;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input type="text" id="itc-search" placeholder="Search supplier / invoice no…" class="g3-input" style="flex:1;min-width:220px;max-width:360px;">
+      <select id="itc-filter-category" class="g3-select" style="flex:0 0 200px;">
+        <option value="">All categories</option>
+        <option value="all_other_itc">All other ITC (B2B)</option>
+        <option value="reverse_charge">Reverse charge</option>
+        <option value="isd">ISD</option>
+        <option value="imports">Imports</option>
+        <option value="credit_notes">Credit notes</option>
+      </select>
+      <button class="g3-btn g3-btn-secondary" id="itc-tick-all" type="button">Tick all</button>
+      <button class="g3-btn g3-btn-secondary" id="itc-untick-all" type="button">Untick all</button>
+      <span id="itc-invoice-count" style="font-size:12px;color:#666;margin-left:auto;"></span>
+    </div>
+    <div id="itc-invoice-list-wrap" style="display:none;max-height:520px;overflow:auto;border:1px solid #e5e7eb;border-radius:6px;">
+      <table class="g3-table" id="itc-invoice-table" style="font-size:12px;">
+        <thead style="position:sticky;top:0;background:#f3f4f6;z-index:1;">
+          <tr>
+            <th style="width:28px;"><input type="checkbox" id="itc-master-tick" checked></th>
+            <th>Supplier</th>
+            <th>Invoice No / Date</th>
+            <th style="text-align:right;">Taxable</th>
+            <th style="text-align:right;">IGST</th>
+            <th style="text-align:right;">CGST</th>
+            <th style="text-align:right;">SGST</th>
+            <th style="text-align:right;">Cess</th>
+            <th>Reversal reason</th>
+          </tr>
+        </thead>
+        <tbody id="itc-invoice-rows"></tbody>
+      </table>
+    </div>
+    <div id="itc-invoice-totals" style="display:none;margin-top:10px;padding:10px;background:#F7F9FC;border-radius:6px;font-size:12.5px;">
+      <strong>Net Eligible ITC →</strong>
+      IGST <span id="net-igst">0.00</span> ·
+      CGST <span id="net-cgst">0.00</span> ·
+      SGST <span id="net-sgst">0.00</span> ·
+      Cess <span id="net-cess">0.00</span>
+      &nbsp;|&nbsp;
+      <strong>Reversal (4B) →</strong>
+      IGST <span id="rev-igst">0.00</span> ·
+      CGST <span id="rev-cgst">0.00</span> ·
+      SGST <span id="rev-sgst">0.00</span> ·
+      Cess <span id="rev-cess">0.00</span>
+    </div>
+    <!-- Fallback category view when invoice list is unavailable (older 2B files) -->
     <div id="itc-review"></div>
   </div>
 
