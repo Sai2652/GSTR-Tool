@@ -194,6 +194,151 @@
     });
   }
 
+  // ---- Step 3b: per-invoice claim/reverse table ------------------------
+  function renderInvoiceList() {
+    const invoices = (state.gstr2bRaw && state.gstr2bRaw.invoices) || [];
+    if (!invoices.length) {
+      $('itc-invoice-toolbar').style.display = 'none';
+      $('itc-invoice-list-wrap').style.display = 'none';
+      $('itc-invoice-totals').style.display = 'none';
+      return;
+    }
+    $('itc-invoice-toolbar').style.display = 'flex';
+    $('itc-invoice-list-wrap').style.display = 'block';
+    $('itc-invoice-totals').style.display = 'block';
+
+    // Default: all ticked = eligible
+    state.invoiceState = {};
+    invoices.forEach(inv => {
+      state.invoiceState[inv.id] = { claim: true, reason: 'eligible' };
+    });
+
+    drawInvoiceRows();
+    updateInvoiceTotals();
+  }
+
+  function drawInvoiceRows() {
+    const invoices = (state.gstr2bRaw && state.gstr2bRaw.invoices) || [];
+    const search = ($('itc-search').value || '').toLowerCase().trim();
+    const catFilter = $('itc-filter-category').value || '';
+    const reasonOpts = REVERSAL_REASONS.map(r =>
+      `<option value="${r.value}">${r.label}</option>`).join('');
+
+    let shown = 0;
+    const html = invoices.map(inv => {
+      const matchesSearch = !search ||
+        (inv.supplier_gstin || '').toLowerCase().includes(search) ||
+        (inv.supplier_name  || '').toLowerCase().includes(search) ||
+        (inv.invoice_no     || '').toLowerCase().includes(search);
+      const matchesCat = !catFilter || inv.category === catFilter;
+      if (!matchesSearch || !matchesCat) return '';
+      shown++;
+      const st = state.invoiceState[inv.id] || { claim: true, reason: 'eligible' };
+      const reasonSel = `<select class="g3-select inv-reason" data-id="${inv.id}" ${st.claim ? 'disabled' : ''} style="font-size:11px;padding:2px 4px;">${
+        REVERSAL_REASONS.filter(r => r.value !== 'eligible').map(r =>
+          `<option value="${r.value}" ${r.value === st.reason ? 'selected' : ''}>${r.label}</option>`
+        ).join('')
+      }</select>`;
+      return `
+        <tr data-id="${inv.id}" data-cat="${inv.category}">
+          <td><input type="checkbox" class="inv-tick" data-id="${inv.id}" ${st.claim ? 'checked' : ''}></td>
+          <td title="${inv.supplier_gstin}"><div style="font-weight:600;">${escapeHtml(inv.supplier_name || '—')}</div><div style="font-size:10.5px;color:#666;">${escapeHtml(inv.supplier_gstin || '')} · ${escapeHtml(catLabel(inv.category))}</div></td>
+          <td>${escapeHtml(inv.invoice_no || '')}<div style="font-size:10.5px;color:#666;">${escapeHtml(inv.invoice_date || '')}</div></td>
+          <td style="text-align:right;">${fmt(inv.taxable_value)}</td>
+          <td style="text-align:right;">${fmt(inv.igst)}</td>
+          <td style="text-align:right;">${fmt(inv.cgst)}</td>
+          <td style="text-align:right;">${fmt(inv.sgst)}</td>
+          <td style="text-align:right;">${fmt(inv.cess)}</td>
+          <td>${reasonSel}</td>
+        </tr>`;
+    }).join('');
+    $('itc-invoice-rows').innerHTML = html;
+    $('itc-invoice-count').textContent =
+      `${shown} of ${invoices.length} invoice(s) shown`;
+
+    // Wire row handlers
+    $$('.inv-tick').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        state.invoiceState[id].claim = e.target.checked;
+        if (e.target.checked) state.invoiceState[id].reason = 'eligible';
+        const sel = document.querySelector(`select.inv-reason[data-id="${id}"]`);
+        if (sel) sel.disabled = e.target.checked;
+        updateInvoiceTotals();
+      });
+    });
+    $$('.inv-reason').forEach(sel => {
+      sel.addEventListener('change', (e) => {
+        const id = e.target.dataset.id;
+        state.invoiceState[id].reason = e.target.value;
+        updateInvoiceTotals();
+      });
+    });
+  }
+
+  function updateInvoiceTotals() {
+    const invoices = (state.gstr2bRaw && state.gstr2bRaw.invoices) || [];
+    const net = { igst: 0, cgst: 0, sgst: 0, cess: 0 };
+    const rev = { igst: 0, cgst: 0, sgst: 0, cess: 0 };
+    invoices.forEach(inv => {
+      const st = state.invoiceState[inv.id] || { claim: true };
+      // Credit notes subtract from eligible (sign-aware)
+      const sign = inv.category === 'credit_notes' ? -1 : 1;
+      TAX_HEADS.forEach(h => {
+        const v = sign * Number(inv[h] || 0);
+        if (st.claim) net[h] += v;
+        else rev[h] += Math.abs(Number(inv[h] || 0));
+      });
+    });
+    TAX_HEADS.forEach(h => {
+      $('net-' + h).textContent = fmt(net[h]);
+      $('rev-' + h).textContent = fmt(rev[h]);
+    });
+    state.invoiceTotals = { net, rev };
+  }
+
+  function catLabel(key) {
+    const m = {
+      all_other_itc: 'All other ITC',
+      reverse_charge: 'Reverse charge',
+      isd: 'ISD',
+      imports: 'Imports',
+      credit_notes: 'Credit note',
+    };
+    return m[key] || key;
+  }
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  // Toolbar handlers
+  $('itc-search').addEventListener('input', drawInvoiceRows);
+  $('itc-filter-category').addEventListener('change', drawInvoiceRows);
+  $('itc-tick-all').addEventListener('click', () => {
+    Object.keys(state.invoiceState).forEach(id => {
+      state.invoiceState[id].claim = true;
+      state.invoiceState[id].reason = 'eligible';
+    });
+    drawInvoiceRows();
+    updateInvoiceTotals();
+  });
+  $('itc-untick-all').addEventListener('click', () => {
+    Object.keys(state.invoiceState).forEach(id => {
+      state.invoiceState[id].claim = false;
+      if (state.invoiceState[id].reason === 'eligible') {
+        state.invoiceState[id].reason = '17_5';
+      }
+    });
+    drawInvoiceRows();
+    updateInvoiceTotals();
+  });
+  $('itc-master-tick').addEventListener('change', (e) => {
+    if (e.target.checked) $('itc-tick-all').click();
+    else $('itc-untick-all').click();
+  });
+
   // ---- Step 4: pull GSTR-1 output --------------------------------------
   $('pull-gstr1-btn').addEventListener('click', pullGstr1);
 
