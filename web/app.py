@@ -1375,6 +1375,8 @@ def _serialize_invoice_for_ui(doc) -> dict:
         "total_tax": float(doc.get("invoice_total_tax", 0)),
         "invoice_value": float(doc.get("invoice_value", 0)),
         "orig_invoice_no": doc.get("orig_invoice_no", "") or "",
+        "supply_type": doc.get("supply_type", "REGULAR"),
+        "reverse_charge": doc.get("reverse_charge", "N"),
     }
 
 
