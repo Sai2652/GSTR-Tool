@@ -163,6 +163,7 @@ def _empty_result() -> Dict[str, Any]:
             "total": _empty_tax(),
         },
         "table4": {},
+        "invoices": [],  # Per-invoice detail rows (Phase 4a)
         "warnings": [],
     }
 
