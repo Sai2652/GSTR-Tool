@@ -520,42 +520,60 @@ def _build_table_6_1(comp: Dict, st,
         rcm_row("Cess",           rcm_cash.get("cess", rcm_tax.get("cess", 0))),
     ]
 
-    headers = [
+    # Two-row grouped header. Row 1: top-level labels (with "Tax paid through ITC"
+    # spanning 4 sub-cols). Row 2: IGST/CGST/SGST/Cess under the ITC group; blank
+    # under other top-level cells (merged into row 1).
+    header_row1 = [
         "Description", "Tax\npayable", "Adjustment of\nneg. liability\nprev. period",
-        "Net Tax\nPayable",
-        "Tax paid through ITC — IGST", "CGST", "SGST", "Cess",
+        "Net Tax\nPayable", "Tax paid through ITC", "", "", "",
         "Tax paid\nin cash", "Interest\npaid in cash", "Late fee\npaid in cash"
     ]
-    widths = [20 * mm, 14 * mm, 17 * mm, 14 * mm,
-              17 * mm, 13 * mm, 13 * mm, 11 * mm,
-              14 * mm, 14 * mm, 14 * mm]
+    header_row2 = ["", "", "", "", "IGST", "CGST", "SGST", "Cess", "", "", ""]
+    widths = [22 * mm, 14 * mm, 18 * mm, 14 * mm,
+              12 * mm, 12 * mm, 12 * mm, 11 * mm,
+              16 * mm, 16 * mm, 16 * mm]
 
-    money_cols = set(range(1, len(headers)))
+    money_cols = set(range(1, len(header_row1)))
 
-    # Build single table with section-header rows interleaved
-    section_a_label = ["(A) Other than reverse charge"] + [""] * (len(headers) - 1)
-    section_b_label = ["(B) Reverse charge and supplies made u/s 9(5)"] + [""] * (len(headers) - 1)
-    body = [headers, section_a_label] + sec_a_rows + [section_b_label] + sec_b_rows
-    t = Table(body, colWidths=widths, repeatRows=1)
-    n_rows = len(body)
+    section_a_label = ["(A) Other than reverse charge"] + [""] * (len(header_row1) - 1)
+    section_b_label = ["(B) Reverse charge and supplies made u/s 9(5)"] + [""] * (len(header_row1) - 1)
+    body = ([header_row1, header_row2, section_a_label]
+            + sec_a_rows + [section_b_label] + sec_b_rows)
+    t = Table(body, colWidths=widths, repeatRows=2)
+
     style = [
-        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8),
-        ("FONT", (0, 1), (-1, -1), "Helvetica", 8.5),
-        ("BACKGROUND", (0, 0), (-1, 0), HEADER_BG),
-        ("TEXTCOLOR",  (0, 0), (-1, 0), PORTAL_BLUE),
-        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        # Header rows
+        ("FONT", (0, 0), (-1, 1), "Helvetica-Bold", 7.5),
+        ("BACKGROUND", (0, 0), (-1, 1), HEADER_BG),
+        ("TEXTCOLOR",  (0, 0), (-1, 1), PORTAL_BLUE),
+        ("ALIGN", (0, 0), (-1, 1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, 1), "MIDDLE"),
+        # Merge each top-level cell down (rows 0+1) EXCEPT the ITC group (cols 4-7)
+        ("SPAN", (0, 0), (0, 1)),   # Description
+        ("SPAN", (1, 0), (1, 1)),   # Tax payable
+        ("SPAN", (2, 0), (2, 1)),   # Adjustment
+        ("SPAN", (3, 0), (3, 1)),   # Net Tax Payable
+        ("SPAN", (4, 0), (7, 0)),   # ITC group label spans 4 sub-cols on row 0
+        ("SPAN", (8, 0), (8, 1)),   # Tax paid in cash
+        ("SPAN", (9, 0), (9, 1)),   # Interest
+        ("SPAN", (10, 0), (10, 1)), # Late fee
+        # Body rows
+        ("FONT", (0, 2), (-1, -1), "Helvetica", 8.5),
         ("BOX", (0, 0), (-1, -1), 0.6, BORDER),
         ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("VALIGN", (0, 2), (-1, -1), "MIDDLE"),
         ("LEFTPADDING",  (0, 0), (-1, -1), 3),
         ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING",   (0, 0), (-1, -1), 2.5),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 2.5),
+        ("TOPPADDING",   (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 3),
     ]
+    # Right-align numeric body columns
     for c in money_cols:
-        style.append(("ALIGN", (c, 1), (c, -1), "RIGHT"))
-    # Section header rows styling
-    for r_idx in (1, 2 + len(sec_a_rows)):
+        style.append(("ALIGN", (c, 2), (c, -1), "RIGHT"))
+    # Section-header rows (right after header row 1, and after sec_a)
+    sec_a_idx = 2
+    sec_b_idx = 2 + 1 + len(sec_a_rows)
+    for r_idx in (sec_a_idx, sec_b_idx):
         style.append(("SPAN", (0, r_idx), (-1, r_idx)))
         style.append(("BACKGROUND", (0, r_idx), (-1, r_idx), HEADER_BG))
         style.append(("FONT", (0, r_idx), (-1, r_idx), "Helvetica-Bold", 8.5))
@@ -563,11 +581,27 @@ def _build_table_6_1(comp: Dict, st,
         style.append(("ALIGN", (0, r_idx), (-1, r_idx), "LEFT"))
     t.setStyle(TableStyle(style))
 
-    return [
+    out = [
         Paragraph("6.1 Payment of tax", st["section"]),
         t,
         Spacer(1, 6),
     ]
+    # Helpful hint when 3.1(b) zero-rated is empty (likely Supply Type not set
+    # in the sales Excel)
+    if supplies_3_1 is not None:
+        b_row = (supplies_3_1.get("3.1.b") or {})
+        if all(float(b_row.get(k, 0) or 0) == 0 for k in ("tx", "igst", "cgst", "sgst", "cess")):
+            hint = ("Note: 3.1(b) zero-rated supplies show as zero. If your firm "
+                    "has exports / SEZ supplies, tag them in the sales Excel with "
+                    "<i>Supply Type</i> = <b>Export-WPAY</b> or <b>Export-WOPAY</b> "
+                    "before regenerating GSTR-1.")
+            out.append(Paragraph(hint,
+                ParagraphStyle("hint", parent=st["small"],
+                               textColor=colors.HexColor("#92400e"),
+                               backColor=colors.HexColor("#fef3c7"),
+                               borderPadding=4, leftIndent=4, rightIndent=4)))
+            out.append(Spacer(1, 4))
+    return out
 
 
 def _build_breakup(comp: Dict, period_label: str, st) -> List:
