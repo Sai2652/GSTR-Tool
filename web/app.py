@@ -544,18 +544,8 @@ def api_gstr3b_download_pdf():
         t4["4C_net_itc"] = {h: round(float(a_total.get(h, 0)) - b_total[h], 2)
                             for h in ("igst", "cgst", "sgst", "cess")}
 
-    try:
-        computation = compute_gstr3b(inputs)
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"Compute failed: {e}"}), 500
-
-    period_label = period_to_label(period) if period else period
-    safe = "".join(c if c.isalnum() else "_" for c in (firm.get("name") or "firm"))
-    out_path = OUTPUT_DIR / f"GSTR3B_{safe}_{period}_{datetime.now().strftime('%H%M%S')}.pdf"
-
-    # Derive 3.1(d) inward RCM from GSTR-2B reverse_charge category.
-    # Taxable value isn't in the summary sheet but IS in the detail-sheet rows
-    # (Phase 4a) — sum the taxable_value of category='reverse_charge' invoices.
+    # Derive 3.1(d) inward RCM from GSTR-2B BEFORE compute, so the RCM portion
+    # can be passed as a separate cash-only liability into the set-off engine.
     if supplies_3_1 is None:
         supplies_3_1 = {}
     _existing_d = supplies_3_1.get("3.1.d") or {}
@@ -574,6 +564,27 @@ def api_gstr3b_download_pdf():
             "sgst": float(rcm_in.get("sgst", 0) or 0),
             "cess": float(rcm_in.get("cess", 0) or 0),
         }
+
+    # Feed RCM tax payable into the compute as a separate cash-only bucket.
+    rcm_d = supplies_3_1.get("3.1.d") or {}
+    inputs.setdefault("rcm_tax_payable", {
+        h: float(rcm_d.get(h, 0) or 0) for h in ("igst", "cgst", "sgst", "cess")
+    })
+    # Total output_tax should INCLUDE RCM (3.1(a) + 3.1(d)) per portal — the
+    # set-off engine internally subtracts RCM before applying ITC.
+    out = inputs.get("output_tax") or {}
+    for h in ("igst", "cgst", "sgst", "cess"):
+        out[h] = float(out.get(h, 0) or 0) + float(rcm_d.get(h, 0) or 0)
+    inputs["output_tax"] = out
+
+    try:
+        computation = compute_gstr3b(inputs)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Compute failed: {e}"}), 500
+
+    period_label = period_to_label(period) if period else period
+    safe = "".join(c if c.isalnum() else "_" for c in (firm.get("name") or "firm"))
+    out_path = OUTPUT_DIR / f"GSTR3B_{safe}_{period}_{datetime.now().strftime('%H%M%S')}.pdf"
 
     try:
         write_gstr3b_pdf(
