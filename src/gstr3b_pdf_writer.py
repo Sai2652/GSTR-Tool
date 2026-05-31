@@ -399,18 +399,41 @@ def _build_table_5(exempt: Optional[Dict[str, Dict[str, float]]], st) -> List:
 
 
 def _build_table_5_1(int_late: Optional[Dict[str, Dict[str, float]]], st) -> List:
+    """
+    Portal layout:
+      Details              | IGST | CGST | SGST | Cess
+      System computed Interest  (read-only, dashes if unknown)
+      Interest Paid             (entered values, default 0)
+      Late fee                  (CGST + SGST only on portal — IGST/Cess dashed)
+    """
     int_late = int_late or {}
     z = _zero_tax()
-    rows = []
-    for label, key in [("Interest", "interest"), ("Late fee", "late_fee")]:
-        s = int_late.get(key) or z
-        rows.append([
-            Paragraph(label, st["cell"]),
-            _money(s.get("igst", 0)),
-            _money(s.get("cgst", 0)),
-            _money(s.get("sgst", 0)),
-            _money(s.get("cess", 0)),
-        ])
+    sys_int = int_late.get("system_computed_interest") or {}
+    paid_int = int_late.get("interest") or z
+    late = int_late.get("late_fee") or z
+
+    def cell(v, dashed=False):
+        if dashed or v is None:
+            return "-"
+        return _money(v)
+
+    rows = [
+        [Paragraph("System computed Interest", st["cell"]),
+         cell(sys_int.get("igst"), dashed=not sys_int),
+         cell(sys_int.get("cgst"), dashed=not sys_int),
+         cell(sys_int.get("sgst"), dashed=not sys_int),
+         cell(sys_int.get("cess"), dashed=not sys_int)],
+        [Paragraph("Interest Paid", st["cell"]),
+         _money(paid_int.get("igst", 0)),
+         _money(paid_int.get("cgst", 0)),
+         _money(paid_int.get("sgst", 0)),
+         _money(paid_int.get("cess", 0))],
+        [Paragraph("Late fee", st["cell"]),
+         "-",  # Late fee never applies to IGST on portal
+         _money(late.get("cgst", 0)),
+         _money(late.get("sgst", 0)),
+         "-"],
+    ]
     headers = ["Details", "Integrated\nTax", "Central\nTax", "State/UT\nTax", "Cess"]
     widths = [88 * mm, 23 * mm, 23 * mm, 23 * mm, 19 * mm]
     return [
