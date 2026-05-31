@@ -102,10 +102,20 @@ def compute_gstr3b(inputs: Dict[str, Any]) -> Dict[str, Any]:
       }
     """
     output = _round_tax(inputs.get("output_tax") or {})
+    # RCM tax payable (3.1(d) on portal) — MUST be paid in cash per Section 49.
+    # We exclude it from set-off and treat it as a separate cash liability.
+    rcm_tax = _round_tax(inputs.get("rcm_tax_payable") or {})
     itc_avail = _round_tax(inputs.get("itc_available") or {})
     itc_rev = _round_tax(inputs.get("itc_reversal") or {})
     opening = _round_tax(inputs.get("opening_balance") or {})
     cross_order = inputs.get("cross_order", "cgst_first")
+
+    # "Other than RCM" output liability = total output - rcm portion.
+    # The set-off engine works only on this.
+    output_other = _subtract(output, rcm_tax)
+    for k in TAX_HEADS:
+        if output_other[k] < 0:
+            output_other[k] = 0.0
 
     # Net ITC = available - reversal (per Table 4)
     net_itc = _subtract(itc_avail, itc_rev)
