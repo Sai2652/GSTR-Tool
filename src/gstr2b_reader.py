@@ -277,10 +277,12 @@ _DETAIL_SHEET_CATEGORY = {
 }
 
 # Synonyms for header lookups (case-insensitive substring match).
+# Keyword lists for fuzzy header matching. Order matters within each tuple —
+# more specific phrases first so e.g. "state/ut tax" beats a bare "tax".
 _HDR = {
-    "supplier_gstin":   ("gstin of supplier", "supplier gstin", "gstin/uin of supplier"),
-    "supplier_name":    ("trade/legal name", "supplier name", "trade name of the supplier",
-                         "legal name of the supplier"),
+    "supplier_gstin":   ("gstin of supplier", "gstin/uin of supplier", "supplier gstin"),
+    "supplier_name":    ("trade/legal name", "trade name of the supplier",
+                         "legal name of the supplier", "supplier name"),
     "invoice_no":       ("invoice number", "note number", "doc number",
                          "shipping bill number"),
     "invoice_date":     ("invoice date", "note date", "doc date", "shipping bill date"),
@@ -288,12 +290,12 @@ _HDR = {
     "invoice_value":    ("invoice value", "note value", "doc value"),
     "place_of_supply":  ("place of supply",),
     "reverse_charge":   ("supply attract reverse charge", "reverse charge"),
-    "rate":             ("rate (%)", "rate"),
+    "rate":             ("rate(%)", "rate (%)", "applicable % of tax rate"),
     "taxable_value":    ("taxable value",),
     "igst":             ("integrated tax", "igst"),
     "cgst":             ("central tax", "cgst"),
-    "sgst":             ("state/ut tax", "state tax", "sgst"),
-    "cess":             ("cess",),
+    "sgst":             ("state/ut tax", "state ut tax", "state tax", "sgst"),
+    "cess":             ("cess(", "cess (", " cess"),  # avoid bare 'cess' substring
     "itc_availability": ("itc availability",),
     "reason":           ("reason", "remarks"),
     "source":           ("source",),  # IMPG: port of import etc.
