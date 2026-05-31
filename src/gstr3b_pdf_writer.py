@@ -44,14 +44,14 @@ def _styles():
     return {
         "title": ParagraphStyle(
             "title", parent=base["Normal"], fontName="Helvetica-Bold",
-            fontSize=13, textColor=PORTAL_BLUE, leading=16, alignment=1),
+            fontSize=15, textColor=PORTAL_BLUE, leading=18, alignment=1),
         "subtitle": ParagraphStyle(
-            "subtitle", parent=base["Normal"], fontName="Helvetica",
-            fontSize=9.5, textColor=TEXT_DARK, leading=12, alignment=1),
+            "subtitle", parent=base["Normal"], fontName="Helvetica-Oblique",
+            fontSize=10, textColor=TEXT_DARK, leading=13, alignment=1),
         "section": ParagraphStyle(
             "section", parent=base["Normal"], fontName="Helvetica-Bold",
-            fontSize=10.5, textColor=PORTAL_BLUE, leading=14, spaceBefore=6,
-            spaceAfter=3),
+            fontSize=11, textColor=PORTAL_BLUE, leading=15, spaceBefore=10,
+            spaceAfter=4),
         "cell": ParagraphStyle(
             "cell", parent=base["Normal"], fontName="Helvetica",
             fontSize=8.5, textColor=TEXT_DARK, leading=11),
@@ -60,7 +60,7 @@ def _styles():
             fontSize=8.5, textColor=TEXT_DARK, leading=11),
         "small": ParagraphStyle(
             "small", parent=base["Normal"], fontName="Helvetica",
-            fontSize=8, textColor=TEXT_DARK, leading=10),
+            fontSize=8.5, textColor=TEXT_DARK, leading=11),
     }
 
 
