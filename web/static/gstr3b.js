@@ -110,6 +110,7 @@
       state.gstr2bRaw = json.data;
       $('parse-status').innerHTML = '<div class="g3-info">✓ Parsed successfully. Review ITC below.</div>';
       renderItcReview();
+      renderInvoiceList();
       enableStep(3);
       enableStep(4);
       enableStep(5);
