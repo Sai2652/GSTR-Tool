@@ -400,6 +400,20 @@ function renderReview(data) {
         cb.dispatchEvent(new Event('change'));
       });
     });
+    // Supply Type dropdowns
+    table.querySelectorAll('.row-supply-type').forEach(sel => {
+      sel.addEventListener('change', (e) => {
+        setOverride(p.firm_id, e.target.dataset.key,
+          { supply_type: e.target.value });
+      });
+    });
+    // RCM checkboxes
+    table.querySelectorAll('.row-rcm').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        setOverride(p.firm_id, e.target.dataset.key,
+          { reverse_charge: e.target.checked ? 'Y' : 'N' });
+      });
+    });
 
     // Inline editing for invoice_no, invoice_date, gstin (delegated)
     table.addEventListener('click', (e) => {
