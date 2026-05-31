@@ -197,15 +197,19 @@
   // ---- Step 3b: per-invoice claim/reverse table ------------------------
   function renderInvoiceList() {
     const invoices = (state.gstr2bRaw && state.gstr2bRaw.invoices) || [];
+    const fallback = $('itc-review');
     if (!invoices.length) {
       $('itc-invoice-toolbar').style.display = 'none';
       $('itc-invoice-list-wrap').style.display = 'none';
       $('itc-invoice-totals').style.display = 'none';
+      if (fallback) fallback.style.display = '';
       return;
     }
     $('itc-invoice-toolbar').style.display = 'flex';
     $('itc-invoice-list-wrap').style.display = 'block';
     $('itc-invoice-totals').style.display = 'block';
+    // Hide the legacy category-level table when invoice-level data is present
+    if (fallback) fallback.style.display = 'none';
 
     // Default: all ticked = eligible
     state.invoiceState = {};
