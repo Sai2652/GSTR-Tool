@@ -444,6 +444,31 @@ function renderReview(data) {
             if (tbody.querySelector(`tr[data-key="${inv.key}"]`)) return;
             tbody.insertAdjacentHTML('beforeend', renderInvoiceRow(inv));
           });
+          // Re-wire change handlers on the newly-added rows
+          tbody.querySelectorAll('tr').forEach(tr => {
+            if (tr._wired) return;
+            tr._wired = true;
+            const cb = tr.querySelector('.row-include');
+            if (cb) {
+              cb.addEventListener('change', (e) => {
+                toggleExclusion(p.firm_id, cb.dataset.key, !e.target.checked);
+                recompute(); updateReviewSummary();
+              });
+            }
+            const sel = tr.querySelector('.row-supply-type');
+            if (sel) {
+              sel.addEventListener('change', (e) => {
+                setOverride(p.firm_id, e.target.dataset.key, { supply_type: e.target.value });
+              });
+            }
+            const rcm = tr.querySelector('.row-rcm');
+            if (rcm) {
+              rcm.addEventListener('change', (e) => {
+                setOverride(p.firm_id, e.target.dataset.key,
+                  { reverse_charge: e.target.checked ? 'Y' : 'N' });
+              });
+            }
+          });
           recompute();
         } catch (err) {
           cfStatus.textContent = 'Network error: ' + err.message;
