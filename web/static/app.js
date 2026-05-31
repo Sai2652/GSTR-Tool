@@ -441,10 +441,38 @@ function renderInvoiceRow(inv) {
       <td class="num">${inr(inv.taxable_value)}</td>
       <td class="num">${inr(inv.total_tax)}</td>
       <td class="num"><b>${inr(inv.invoice_value)}</b></td>
+      <td>${renderSupplyTypeSelect(inv)}</td>
+      <td style="text-align:center;">${renderRcmCheckbox(inv)}</td>
       <td><span class="bucket-pill bucket-${bucket.toLowerCase()}">${bucket}</span></td>
       <td class="col-actions"><button type="button" class="row-trash" title="Toggle exclude" aria-label="Exclude this invoice"></button></td>
     </tr>
   `;
+}
+
+const SUPPLY_TYPE_OPTIONS = [
+  ['REGULAR',      'Regular (taxable)'],
+  ['SEZ_WPAY',     'SEZ — with payment'],
+  ['SEZ_WOPAY',    'SEZ — without payment (LUT)'],
+  ['EXPORT_WPAY',  'Export — with payment'],
+  ['EXPORT_WOPAY', 'Export — without payment (LUT)'],
+  ['DEEMED',       'Deemed export'],
+  ['NIL',          'Nil rated'],
+  ['EXEMPT',       'Exempt'],
+  ['NON_GST',      'Non-GST'],
+];
+
+function renderSupplyTypeSelect(inv) {
+  const cur = (inv.supply_type || 'REGULAR').toUpperCase();
+  const opts = SUPPLY_TYPE_OPTIONS.map(([v, l]) =>
+    `<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`
+  ).join('');
+  return `<select class="row-supply-type" data-key="${escapeHtml(inv.key)}"
+            style="font-size:11px;padding:3px 5px;border:1px solid #d0d0d8;border-radius:4px;background:#fff;max-width:170px;">${opts}</select>`;
+}
+
+function renderRcmCheckbox(inv) {
+  const checked = (inv.reverse_charge || 'N').toUpperCase() === 'Y';
+  return `<input type="checkbox" class="row-rcm" data-key="${escapeHtml(inv.key)}" ${checked ? 'checked' : ''} title="Mark this invoice as Reverse Charge applicable">`;
 }
 
 function inr(n) {
