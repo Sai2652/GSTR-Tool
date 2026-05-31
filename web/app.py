@@ -544,15 +544,22 @@ def api_gstr3b_download_pdf():
     safe = "".join(c if c.isalnum() else "_" for c in (firm.get("name") or "firm"))
     out_path = OUTPUT_DIR / f"GSTR3B_{safe}_{period}_{datetime.now().strftime('%H%M%S')}.pdf"
 
-    # Derive 3.1(d) inward RCM from GSTR-2B reverse_charge category (tax only —
-    # taxable value isn't in the summary sheet). If client passed an explicit
-    # 3.1(d) row we don't overwrite it.
+    # Derive 3.1(d) inward RCM from GSTR-2B reverse_charge category.
+    # Taxable value isn't in the summary sheet but IS in the detail-sheet rows
+    # (Phase 4a) — sum the taxable_value of category='reverse_charge' invoices.
     if supplies_3_1 is None:
         supplies_3_1 = {}
-    if "3.1.d" not in supplies_3_1 or not supplies_3_1["3.1.d"]:
+    _existing_d = supplies_3_1.get("3.1.d") or {}
+    _all_zero = all(float(_existing_d.get(k, 0) or 0) == 0
+                    for k in ("tx", "igst", "cgst", "sgst", "cess"))
+    if _all_zero:
         rcm_in = ((gstr2b or {}).get("itc_available") or {}).get("reverse_charge") or {}
+        rcm_tx_val = 0.0
+        for inv in (gstr2b or {}).get("invoices") or []:
+            if (inv.get("category") or "") == "reverse_charge":
+                rcm_tx_val += float(inv.get("taxable_value") or 0)
         supplies_3_1["3.1.d"] = {
-            "tx": 0.0,  # not available from summary sheet
+            "tx": round(rcm_tx_val, 2),
             "igst": float(rcm_in.get("igst", 0) or 0),
             "cgst": float(rcm_in.get("cgst", 0) or 0),
             "sgst": float(rcm_in.get("sgst", 0) or 0),
