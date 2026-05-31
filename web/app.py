@@ -514,6 +514,26 @@ def api_gstr3b_download_pdf():
     inter_state_3_2  = payload.get("inter_state_3_2")
     exempt_inward_5  = payload.get("exempt_inward_5")
     interest_late_fee = payload.get("interest_late_fee")
+    reversal_buckets = payload.get("reversal_buckets") or {}
+
+    # If client supplied invoice-level reversal buckets, overlay them onto
+    # the Table 4 lines so 4(B)(1)/(B)(2) reflect the user's classification.
+    if reversal_buckets and isinstance(gstr2b.get("table4"), dict):
+        t4 = gstr2b["table4"]
+        for src_key, target_key in [("4B1", "4B1_rules_38_42_43_17_5"),
+                                    ("4B2", "4B2_others")]:
+            src = reversal_buckets.get(src_key) or {}
+            if any(float(src.get(h, 0) or 0) for h in ("igst", "cgst", "sgst", "cess")):
+                t4[target_key] = {h: round(float(src.get(h, 0) or 0), 2)
+                                  for h in ("igst", "cgst", "sgst", "cess")}
+        # Recompute B totals and C net
+        b_total = {h: round(t4["4B1_rules_38_42_43_17_5"].get(h, 0) +
+                            t4["4B2_others"].get(h, 0), 2)
+                   for h in ("igst", "cgst", "sgst", "cess")}
+        a_total = t4.get("4A_total") or {h: 0 for h in ("igst","cgst","sgst","cess")}
+        t4["4B_total"] = b_total
+        t4["4C_net_itc"] = {h: round(float(a_total.get(h, 0)) - b_total[h], 2)
+                            for h in ("igst", "cgst", "sgst", "cess")}
 
     try:
         computation = compute_gstr3b(inputs)
