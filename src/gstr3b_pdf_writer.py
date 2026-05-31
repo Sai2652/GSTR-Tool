@@ -80,17 +80,50 @@ def _zero_tax() -> Dict[str, float]:
 
 def _build_header(firm: Dict, period_label: str, st) -> List:
     gstin = firm.get("gstin", "")
+    # legal_name = the proprietor / registered person's legal name (e.g. PETER DSOUZA)
+    # name      = trade name / business name (e.g. HITECH SYSTEMS)
     legal = firm.get("legal_name") or firm.get("name") or ""
     trade = firm.get("name") or ""
-    # FY guess from period (e.g. "May 2026" → FY 2026-27 if month>=Apr)
+    arn = firm.get("arn") or ""
+    arn_date = firm.get("arn_date") or ""
     fy = _fy_label(period_label)
+    month_only = _month_only(period_label)
 
+    # Top right small box for Year/Period (mirrors portal layout)
+    yp_table = Table(
+        [["Year", fy], ["Period", month_only or period_label]],
+        colWidths=[20 * mm, 36 * mm],
+    )
+    yp_table.setStyle(TableStyle([
+        ("FONT",       (0, 0), (-1, -1), "Helvetica", 9),
+        ("FONT",       (0, 0), (0, -1),  "Helvetica-Bold", 9),
+        ("BACKGROUND", (0, 0), (0, -1),  HEADER_BG),
+        ("TEXTCOLOR",  (0, 0), (0, -1),  PORTAL_BLUE),
+        ("BOX",        (0, 0), (-1, -1), 0.6, BORDER),
+        ("INNERGRID",  (0, 0), (-1, -1), 0.4, BORDER),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING",   (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 2),
+    ]))
+
+    # Right-align the year/period chip within the page
+    yp_wrapper = Table([[yp_table]], colWidths=[180 * mm])
+    yp_wrapper.setStyle(TableStyle([
+        ("ALIGN",         (0, 0), (-1, -1), "RIGHT"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    # Main firm-info block — portal uses 2(a)/(b)/(c)/(d) numbering
     rows = [
-        ["1. GSTIN", gstin],
-        ["2. Legal name of the registered person", legal],
-        ["3(a). Trade name, if any", trade],
-        ["4. Year", fy],
-        ["5. Period", period_label],
+        ["GSTIN of the supplier", gstin],
+        ["2(a). Legal name of the registered person", legal],
+        ["2(b). Trade name, if any", trade],
+        ["2(c). ARN", arn],
+        ["2(d). Date of ARN", arn_date],
     ]
     t = Table(rows, colWidths=[75 * mm, 105 * mm])
     t.setStyle(TableStyle([
@@ -110,8 +143,12 @@ def _build_header(firm: Dict, period_label: str, st) -> List:
         Paragraph("Form GSTR-3B", st["title"]),
         Paragraph("[See rule 61(5)]", st["subtitle"]),
         Spacer(1, 6),
+        yp_wrapper,
+        Spacer(1, 4),
         t,
-        Spacer(1, 8),
+        Paragraph("(Amount in ₹ for all tables)",
+                  ParagraphStyle("a", parent=st["small"], alignment=2)),
+        Spacer(1, 6),
     ]
 
 
@@ -120,7 +157,6 @@ def _fy_label(period_label: str) -> str:
     s = (period_label or "").strip()
     yr = None
     mo = None
-    # MMYYYY
     if len(s) == 6 and s.isdigit():
         mo, yr = int(s[:2]), int(s[2:])
     else:
@@ -136,6 +172,23 @@ def _fy_label(period_label: str) -> str:
         return s
     fy_start = yr if (mo or 1) >= 4 else yr - 1
     return f"{fy_start}-{str(fy_start + 1)[2:]}"
+
+
+def _month_only(period_label: str) -> str:
+    """'May 2026' / '052026' → 'May'."""
+    s = (period_label or "").strip()
+    from datetime import datetime
+    if len(s) == 6 and s.isdigit():
+        try:
+            return datetime(int(s[2:]), int(s[:2]), 1).strftime("%B")
+        except ValueError:
+            return s
+    for fmt in ("%B %Y", "%b %Y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%B")
+        except ValueError:
+            continue
+    return s.split(" ")[0] if " " in s else s
 
 
 # ---------- section helper ----------
