@@ -659,6 +659,9 @@
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      // Refresh project status so Mark-as-Filed button appears now that the
+      // project has been saved to the archive.
+      checkProjectStatus();
     } catch (err) {
       alert('PDF download error: ' + err.message);
     } finally {
@@ -698,6 +701,9 @@
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      // Refresh project status so Mark-as-Filed button appears now that the
+      // project has been saved to the archive.
+      checkProjectStatus();
     } catch (err) {
       alert('Download error: ' + err.message);
     } finally {
