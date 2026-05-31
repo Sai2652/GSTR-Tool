@@ -201,17 +201,17 @@ def _tax_table(headers: List[str], rows: List[List[Any]],
     n_rows = len(body)
     style = [
         ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8.5),
-        ("FONT", (0, 1), (-1, -1), "Helvetica", 8.5),
+        ("FONT", (0, 1), (-1, -1), "Helvetica", 9),
         ("BACKGROUND", (0, 0), (-1, 0), HEADER_BG),
         ("TEXTCOLOR",  (0, 0), (-1, 0), PORTAL_BLUE),
         ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-        ("BOX", (0, 0), (-1, -1), 0.6, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
         ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING",   (0, 0), (-1, -1), 2.5),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 2.5),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING",   (0, 0), (-1, -1), 4.5),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 4.5),
     ]
     # Right-align money columns; alternate row shading
     for c in money_cols:
