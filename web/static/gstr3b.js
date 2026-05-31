@@ -171,6 +171,19 @@
       state.filed3b = !!f3.filed;
       state.filedAt3b = f3.filed_at || '';
       state.arn3b = f3.arn || '';
+      // Auto-unlock if user arrived via Edit URL params (?firm=&period=)
+      const urlParams = new URLSearchParams(location.search);
+      const cameFromEdit = urlParams.has('firm') && urlParams.has('period');
+      if (state.filed3b && cameFromEdit && !state._autoUnlocked) {
+        state._autoUnlocked = true;
+        try {
+          await fetch('/api/projects/' + state.projectId + '/unlock', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({return_type: 'gstr3b'}),
+          });
+          state.filed3b = false;
+        } catch (e) { /* ignore */ }
+      }
       updateFilingUI();
     } catch (err) {
       console.warn('project status check failed', err);
