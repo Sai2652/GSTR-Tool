@@ -1268,6 +1268,19 @@ def healthz():
 
 
 # ---------- Helpers --------------------------------------------------------
+def _prev_period(period: str) -> str:
+    """MMYYYY → previous month's MMYYYY (handles January wrap)."""
+    s = (period or "").strip()
+    if len(s) != 6 or not s.isdigit():
+        return ""
+    mm, yyyy = int(s[:2]), int(s[2:])
+    mm -= 1
+    if mm == 0:
+        mm = 12
+        yyyy -= 1
+    return f"{mm:02d}{yyyy}"
+
+
 def _default_period() -> str:
     now = datetime.now()
     if now.month == 1:
