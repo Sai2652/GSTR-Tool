@@ -459,21 +459,20 @@ def _build_table_6_1(comp: Dict, st,
       tax period | Net Tax Payable | Tax paid through ITC (IGST/CGST/SGST/Cess)
       | Tax paid in cash | Interest paid in cash | Late fee paid in cash
     """
-    output_total = comp.get("output_tax", _zero_tax())
-    cash_payable = comp.get("cash_payable", _zero_tax())
     setoff_steps = comp.get("setoff_steps", [])
 
-    # Split output into (A) regular and (B) RCM portion.
-    # RCM tax payable comes from 3.1(d) — it's a self-liability on inward RCM
-    # supplies, paid only in CASH (no ITC offset allowed on the same period).
-    rcm_d = (supplies_3_1 or {}).get("3.1.d") or {}
-    rcm_tax = {h: float(rcm_d.get(h, 0) or 0) for h in ("igst", "cgst", "sgst", "cess")}
-    # Section (A) tax payable = total output - RCM-self portion
-    other_tax = {h: round(output_total.get(h, 0) - rcm_tax[h], 2)
-                 for h in ("igst", "cgst", "sgst", "cess")}
-    # Section (A) cash = total cash - RCM cash (RCM is fully cash, so subtract)
-    other_cash = {h: round(max(0.0, cash_payable.get(h, 0) - rcm_tax[h]), 2)
-                  for h in ("igst", "cgst", "sgst", "cess")}
+    # Compute already split RCM out: use authoritative fields when present.
+    other_tax = comp.get("output_tax_other") or {
+        h: max(0.0, comp.get("output_tax", _zero_tax()).get(h, 0)
+                    - (comp.get("rcm_tax_payable") or _zero_tax()).get(h, 0))
+        for h in ("igst", "cgst", "sgst", "cess")
+    }
+    other_cash = comp.get("cash_payable_other") or comp.get("cash_payable") or _zero_tax()
+    rcm_tax = comp.get("rcm_tax_payable") or {
+        h: float(((supplies_3_1 or {}).get("3.1.d") or {}).get(h, 0) or 0)
+        for h in ("igst", "cgst", "sgst", "cess")
+    }
+    rcm_cash = comp.get("cash_payable_rcm") or dict(rcm_tax)
 
     def itc_from_to(from_h: str, to_h: str) -> float:
         return sum(s["amount"] for s in setoff_steps
