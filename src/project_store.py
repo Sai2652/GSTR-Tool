@@ -33,6 +33,7 @@ VALID_KINDS = {
     "gstr1_report",
     "gstr2b_input",
     "gstr3b_excel",
+    "gstr3b_pdf",
 }
 
 KIND_LABELS = {
@@ -41,6 +42,7 @@ KIND_LABELS = {
     "gstr1_report":   "GSTR-1 Report",
     "gstr2b_input":   "GSTR-2B Input",
     "gstr3b_excel":   "GSTR-3B Computation",
+    "gstr3b_pdf":     "GSTR-3B PDF",
 }
 
 
