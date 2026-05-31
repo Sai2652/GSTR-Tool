@@ -678,10 +678,14 @@ document.addEventListener('click', async (e) => {
   showOverlay(true, 'Building JSON & Excel reports…');
   e.target.disabled = true;
   try {
+    const overrides = {};
+    Object.entries(currentOverrides).forEach(([firmId, m]) => {
+      if (m && Object.keys(m).length) overrides[firmId] = m;
+    });
     const res = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ batch_id: currentBatchId, exclusions }),
+      body: JSON.stringify({ batch_id: currentBatchId, exclusions, overrides }),
     });
     const data = await res.json();
     showOverlay(false);
