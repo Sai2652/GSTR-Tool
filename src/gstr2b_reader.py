@@ -496,9 +496,13 @@ def _scan_prior_fy_invoices(wb, period: str) -> tuple[int, list[str]]:
 
 
 def _find_header_row(ws) -> Optional[int]:
-    """Detail sheets have a multi-row header; find the row containing 'GSTIN'."""
-    for r in range(1, min(15, ws.max_row + 1)):
-        for c in range(1, min(20, ws.max_column + 1)):
+    """
+    Detail sheets have a multi-row merged header. We want the TOP header row
+    (containing the merged group titles like 'Integrated Tax'). Heuristic:
+    scan first ~15 rows; pick the first row that contains 'GSTIN' anywhere.
+    """
+    for r in range(1, min(20, ws.max_row + 1)):
+        for c in range(1, min(30, ws.max_column + 1)):
             v = ws.cell(r, c).value
             if v and "GSTIN" in str(v).upper():
                 return r
@@ -506,6 +510,7 @@ def _find_header_row(ws) -> Optional[int]:
 
 
 def _find_col(ws, header_row: int, keywords: tuple[str, ...]) -> Optional[int]:
+    """Single-row column finder (used by Sec 16(4) scan)."""
     for c in range(1, ws.max_column + 1):
         v = ws.cell(header_row, c).value
         if not v:
@@ -514,6 +519,71 @@ def _find_col(ws, header_row: int, keywords: tuple[str, ...]) -> Optional[int]:
         if any(k in s for k in keywords):
             return c
     return None
+
+
+def _find_col_band(ws, header_row: int, keywords: tuple[str, ...],
+                   band: int = 3) -> Optional[int]:
+    """
+    Multi-row column finder for merged headers. Concatenates cell text from
+    header_row .. header_row + band-1 for each column, then matches keywords.
+    Handles merged-cell ranges by replicating the merged value across columns.
+    """
+    max_col = ws.max_column or 1
+    # Build a per-column composite header string by reading `band` rows and
+    # honoring merged-cell groups (only top-left has the value in openpyxl).
+    composite: Dict[int, str] = {c: "" for c in range(1, max_col + 1)}
+    # First, expand merged ranges so every covered cell carries its top-left value
+    merged_values: Dict[tuple, str] = {}
+    for mr in ws.merged_cells.ranges:
+        top_left = ws.cell(mr.min_row, mr.min_col).value
+        if top_left is None:
+            continue
+        s = str(top_left)
+        for rr in range(mr.min_row, mr.max_row + 1):
+            for cc in range(mr.min_col, mr.max_col + 1):
+                merged_values[(rr, cc)] = s
+    for dr in range(band):
+        r = header_row + dr
+        if r > ws.max_row:
+            break
+        for c in range(1, max_col + 1):
+            v = merged_values.get((r, c))
+            if v is None:
+                v = ws.cell(r, c).value
+            if v is None:
+                continue
+            composite[c] += " " + str(v)
+    for c, txt in composite.items():
+        s = txt.lower()
+        if any(k in s for k in keywords):
+            return c
+    return None
+
+
+def _find_data_start(ws, header_row: int, col_map: Dict[str, Optional[int]]) -> int:
+    """
+    Find the first row below the header band that contains real data — i.e.
+    a row where the supplier-GSTIN or invoice-no column has a value that
+    LOOKS like data (not another header word).
+    """
+    sup_col = col_map.get("supplier_gstin")
+    inum_col = col_map.get("invoice_no")
+    for r in range(header_row + 1, min(header_row + 8, ws.max_row + 1)):
+        sup = ws.cell(r, sup_col).value if sup_col else None
+        inum = ws.cell(r, inum_col).value if inum_col else None
+        for cand in (sup, inum):
+            if cand is None:
+                continue
+            s = str(cand).strip()
+            if not s:
+                continue
+            # Skip rows that look like sub-headers (contain header keywords)
+            low = s.lower()
+            if any(w in low for w in ("gstin", "invoice", "trade", "legal",
+                                      "place of supply", "(₹)", "(rs)")):
+                continue
+            return r
+    return header_row + 1
 
 
 def _to_date(v) -> Optional[date]:
