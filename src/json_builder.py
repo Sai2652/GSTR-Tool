@@ -182,13 +182,21 @@ def build_b2b_section(invoices: list) -> list:
                     "num": ITEM_NUM_PLACEHOLDER,
                     "itm_det": _itm_det(item, inv["is_interstate"]),
                 })
+            # Map supply_type → inv_typ per GSTN schema
+            sty = (inv.get("supply_type") or "REGULAR").upper()
+            inv_typ_map = {
+                "SEZ_WPAY":      "SEWP",
+                "SEZ_WOPAY":     "SEWOP",
+                "DEEMED":        "DE",
+            }
+            inv_typ = inv_typ_map.get(sty, "R")
             invs.append({
                 "inum": str(inv["invoice_no"]).strip(),
                 "idt": _format_date(inv["invoice_date"]),
                 "val": _num(inv["invoice_value"]),
                 "pos": _pos(inv["place_of_supply"]),
                 "rchrg": str(inv.get("reverse_charge", "N") or "N").upper(),
-                "inv_typ": "R",
+                "inv_typ": inv_typ,
                 "itms": itms,
             })
         b2b.append({"ctin": ctin, "inv": invs})
