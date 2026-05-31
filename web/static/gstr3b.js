@@ -21,8 +21,18 @@
     gstr2bRaw: null,        // full parsed object
     gstr2bData: null,       // user-edited eligibility view
     eligibility: {},        // {category: {igst: bool, cgst: bool, sgst: bool, cess: bool}}
+    invoiceState: {},       // {invoice_id: {claim: bool, reason: 'eligible'|'17_5'|...}}
     computation: null,
   };
+
+  const REVERSAL_REASONS = [
+    { value: 'eligible',     label: 'Eligible (claim)',        bucket: 'claim' },
+    { value: '17_5',         label: 'Sec 17(5) blocked',       bucket: '4B1'   },
+    { value: 'not_received', label: 'Invoice not received',    bucket: '4B2'   },
+    { value: 'rule_42',      label: 'Rule 42 (exempt use)',    bucket: '4B1'   },
+    { value: 'rule_43',      label: 'Rule 43 (capital goods)', bucket: '4B1'   },
+    { value: 'other',        label: 'Other',                   bucket: '4B2'   },
+  ];
 
   const TAX_HEADS = ['igst', 'cgst', 'sgst', 'cess'];
   const CATEGORIES = [
