@@ -350,13 +350,17 @@ def _gstr1_to_3b_breakdown(g: dict) -> dict:
         row["cess"] += sign * float(itm_det.get("csamt", 0) or 0)
         row["tx"]   += sign * float(itm_det.get("txval", 0) or 0)
 
-    # 3.1(a) — regular B2B (rchrg=N), B2CL, B2CS
+    # 3.1(a) — regular B2B (rchrg=N), B2CL, B2CS.
+    # SEZ supplies (inv_typ='SEWP'/'SEWOP') and Deemed Exports ('DE') in B2B
+    # are zero-rated → route to 3.1(b) instead of 3.1(a).
+    ZERO_RATED_INV_TYPES = {"SEWP", "SEWOP", "SEWP/B", "SEWOP/B", "DE"}
     for ctin in (g.get("b2b") or []):
         for inv in ctin.get("inv", []):
             if (inv.get("rchrg") or "N").upper() == "Y":
                 continue  # RCM B2B counts as 3.1(d) for the recipient — skip outward
+            target = b if (inv.get("inv_typ") or "R").upper() in ZERO_RATED_INV_TYPES else a
             for itm in inv.get("itms", []):
-                add(a, itm.get("itm_det", {}))
+                add(target, itm.get("itm_det", {}))
     for state in (g.get("b2cl") or []):
         for inv in state.get("inv", []):
             for itm in inv.get("itms", []):
