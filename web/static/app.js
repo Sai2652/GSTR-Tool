@@ -707,6 +707,36 @@ function renderResults(data) {
     zipLink.hidden = false;
   }
   section.hidden = false;
+
+  // Show "Continue to GSTR-3B" / "Back to edit" row if at least one firm succeeded
+  const anyOk = (data.results || []).some(r => r.ok);
+  const nextRow = document.getElementById('next-step-row');
+  if (nextRow && anyOk) {
+    nextRow.style.display = 'flex';
+    const first = (data.results || []).find(r => r.ok);
+    const period = (first && first.period) || (window._currentPeriod || '');
+    const firmId = (first && (first.firm_id || first.firm_gstin)) || '';
+    const url = '/gstr3b'
+      + (firmId ? '?firm=' + encodeURIComponent(firmId) : '')
+      + (period ? (firmId ? '&' : '?') + 'period=' + encodeURIComponent(period) : '');
+    const link = document.getElementById('continue-to-3b-btn');
+    if (link) link.href = url;
+  }
+  const backBtn = document.getElementById('back-to-upload-btn');
+  if (backBtn && !backBtn._wired) {
+    backBtn._wired = true;
+    backBtn.addEventListener('click', () => {
+      document.getElementById('results-section').hidden = true;
+      if (nextRow) nextRow.style.display = 'none';
+      // Re-enable review section
+      const review = document.getElementById('review-section');
+      if (review) {
+        review.hidden = false;
+        review.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+
   section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   if (processBtn) processBtn.disabled = false;
 }
