@@ -76,6 +76,31 @@
   // initial — period prefilled from server
   state.period = $('period-input').value.trim();
 
+  // Pre-select firm + period from URL params (?firm=...&period=...)
+  // when arriving from the GSTR-1 → Continue button.
+  (function applyUrlParams() {
+    const params = new URLSearchParams(location.search);
+    const f = params.get('firm');
+    const p = params.get('period');
+    const sel = $('firm-select');
+    if (f && sel) {
+      // Match by value (firm UUID/id) or by gstin/name dataset
+      for (let i = 0; i < sel.options.length; i++) {
+        const o = sel.options[i];
+        if (o.value === f || o.dataset.gstin === f || o.dataset.name === f) {
+          sel.selectedIndex = i;
+          sel.dispatchEvent(new Event('change'));
+          break;
+        }
+      }
+    }
+    if (p && /^\d{6}$/.test(p)) {
+      $('period-input').value = p;
+      state.period = p;
+      checkStep1();
+    }
+  })();
+
   // ---- Step 2: file upload ---------------------------------------------
   const drop = $('file-drop');
   drop.addEventListener('click', () => $('file-input').click());
