@@ -479,11 +479,19 @@ const SUPPLY_TYPE_OPTIONS = [
 
 function renderSupplyTypeSelect(inv) {
   const cur = (inv.supply_type || 'REGULAR').toUpperCase();
+  const auto = (inv.supply_type_auto || 'REGULAR').toUpperCase();
+  // Highlight when server inferred a non-regular type (so user notices)
+  const inferred = auto !== 'REGULAR';
+  const borderColor = inferred ? '#d97706' : '#d0d0d8';
+  const bgColor = inferred ? '#fffbeb' : '#fff';
+  const title = inferred ? `Auto-detected: ${auto.replace('_',' ')} (change if wrong)`
+                         : 'Choose supply type';
   const opts = SUPPLY_TYPE_OPTIONS.map(([v, l]) =>
     `<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`
   ).join('');
   return `<select class="row-supply-type" data-key="${escapeHtml(inv.key)}"
-            style="font-size:11px;padding:3px 5px;border:1px solid #d0d0d8;border-radius:4px;background:#fff;max-width:170px;">${opts}</select>`;
+            title="${escapeHtml(title)}"
+            style="font-size:11px;padding:3px 5px;border:1px solid ${borderColor};border-radius:4px;background:${bgColor};max-width:170px;">${opts}</select>`;
 }
 
 function renderRcmCheckbox(inv) {
