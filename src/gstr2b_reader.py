@@ -261,6 +261,117 @@ def parse_gstr2b(path: str | Path) -> Dict[str, Any]:
     return result
 
 
+# --- Per-invoice detail extraction (Phase 4a) -----------------------------
+
+# Map detail-sheet name -> internal category. These names match the GSTN portal
+# Excel sheet titles exactly (case-sensitive after .strip().upper()).
+_DETAIL_SHEET_CATEGORY = {
+    "B2B":     "all_other_itc",
+    "B2BA":    "all_other_itc",   # amendments
+    "CDNR":    "credit_notes",
+    "CDNRA":   "credit_notes",    # amendments
+    "IMPG":    "imports",
+    "IMPGSEZ": "imports",
+    "ISD":     "isd",
+    "ISDA":    "isd",
+}
+
+# Synonyms for header lookups (case-insensitive substring match).
+_HDR = {
+    "supplier_gstin":   ("gstin of supplier", "supplier gstin", "gstin/uin of supplier"),
+    "supplier_name":    ("trade/legal name", "supplier name", "trade name of the supplier",
+                         "legal name of the supplier"),
+    "invoice_no":       ("invoice number", "note number", "doc number",
+                         "shipping bill number"),
+    "invoice_date":     ("invoice date", "note date", "doc date", "shipping bill date"),
+    "invoice_type":     ("invoice type", "note type", "doc type", "supply type"),
+    "invoice_value":    ("invoice value", "note value", "doc value"),
+    "place_of_supply":  ("place of supply",),
+    "reverse_charge":   ("supply attract reverse charge", "reverse charge"),
+    "rate":             ("rate (%)", "rate"),
+    "taxable_value":    ("taxable value",),
+    "igst":             ("integrated tax", "igst"),
+    "cgst":             ("central tax", "cgst"),
+    "sgst":             ("state/ut tax", "state tax", "sgst"),
+    "cess":             ("cess",),
+    "itc_availability": ("itc availability",),
+    "reason":           ("reason", "remarks"),
+    "source":           ("source",),  # IMPG: port of import etc.
+}
+
+
+def _extract_invoice_details(wb) -> List[Dict[str, Any]]:
+    """
+    Walk every detail sheet present in the workbook and emit a flat list
+    of per-invoice dicts. Each row is uniquely identified by
+    (category, sheet, source_row).
+    """
+    invoices: List[Dict[str, Any]] = []
+    seq = 0
+    for sheet_name in wb.sheetnames:
+        key = sheet_name.strip().upper()
+        category = _DETAIL_SHEET_CATEGORY.get(key)
+        if not category:
+            continue
+        ws = wb[sheet_name]
+        header_row = _find_header_row(ws)
+        if header_row is None:
+            continue
+        col_map = {field: _find_col(ws, header_row, kws) for field, kws in _HDR.items()}
+        for r in range(header_row + 1, ws.max_row + 1):
+            # Skip blank rows — require at least supplier GSTIN or invoice number
+            sup = ws.cell(r, col_map["supplier_gstin"]).value if col_map["supplier_gstin"] else None
+            inum = ws.cell(r, col_map["invoice_no"]).value if col_map["invoice_no"] else None
+            if not sup and not inum:
+                continue
+            seq += 1
+            inv = {
+                "id": f"{key}-{seq}",
+                "category": category,
+                "source_sheet": key,
+                "supplier_gstin":   _cell_str(ws, r, col_map["supplier_gstin"]),
+                "supplier_name":    _cell_str(ws, r, col_map["supplier_name"]),
+                "invoice_no":       _cell_str(ws, r, col_map["invoice_no"]),
+                "invoice_date":     _cell_date_str(ws, r, col_map["invoice_date"]),
+                "invoice_type":     _cell_str(ws, r, col_map["invoice_type"]),
+                "invoice_value":    _safe_float(_cell_raw(ws, r, col_map["invoice_value"])),
+                "place_of_supply":  _cell_str(ws, r, col_map["place_of_supply"]),
+                "reverse_charge":   _cell_str(ws, r, col_map["reverse_charge"]),
+                "rate":             _safe_float(_cell_raw(ws, r, col_map["rate"])),
+                "taxable_value":    _safe_float(_cell_raw(ws, r, col_map["taxable_value"])),
+                "igst":             _safe_float(_cell_raw(ws, r, col_map["igst"])),
+                "cgst":             _safe_float(_cell_raw(ws, r, col_map["cgst"])),
+                "sgst":             _safe_float(_cell_raw(ws, r, col_map["sgst"])),
+                "cess":             _safe_float(_cell_raw(ws, r, col_map["cess"])),
+                "itc_availability": _cell_str(ws, r, col_map["itc_availability"]),
+                "reason":           _cell_str(ws, r, col_map["reason"]),
+            }
+            # Credit notes carry negative sign in portal — preserve as-is.
+            invoices.append(inv)
+    return invoices
+
+
+def _cell_raw(ws, row: int, col: Optional[int]):
+    if col is None:
+        return None
+    return ws.cell(row, col).value
+
+
+def _cell_str(ws, row: int, col: Optional[int]) -> str:
+    v = _cell_raw(ws, row, col)
+    if v is None:
+        return ""
+    return str(v).strip()
+
+
+def _cell_date_str(ws, row: int, col: Optional[int]) -> str:
+    v = _cell_raw(ws, row, col)
+    d = _to_date(v)
+    if d:
+        return d.strftime("%d-%m-%Y")
+    return _cell_str(ws, row, col)
+
+
 # --- Table 4 line breakdown (post-Oct 2022) -------------------------------
 
 def _build_table4_lines(parsed: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
