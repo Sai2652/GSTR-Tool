@@ -656,7 +656,8 @@ def write_gstr3b_pdf(
     story += _build_table_4(gstr2b.get("table4") or {}, st)
     story += _build_table_5(exempt_inward_5, st)
     story += _build_table_5_1(interest_late_fee, st)
-    story += _build_table_6_1(computation, st)
+    story += _build_table_6_1(computation, st, supplies_3_1=supplies_3_1)
+    story += _build_breakup(computation, period_label, st)
     story += _build_verification(firm, st)
     doc.build(story)
     return out_path
