@@ -504,6 +504,15 @@ def api_gstr3b_download_pdf():
     """Render a portal-style GSTR-3B PDF and return it as a download."""
     payload = request.get_json(silent=True) or {}
     firm = payload.get("firm") or {}
+    # Enrich firm dict with the canonical Supabase record (legal_name, arn,
+    # designation, etc.) — the client only sends id/name/gstin.
+    firm_id = firm.get("id") or firm.get("gstin")
+    if firm_id:
+        full = firms.get(firm_id) or {}
+        # Merge: server fields overwrite client fields
+        for k, v in full.items():
+            if v not in (None, ""):
+                firm[k] = v
     period = payload.get("period") or ""
     inputs = payload.get("inputs") or {}
     gstr2b = payload.get("gstr2b") or {}
