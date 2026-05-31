@@ -171,8 +171,13 @@ def compute_gstr3b(inputs: Dict[str, Any]) -> Dict[str, Any]:
     # Credit used = initial pool - remaining credit pool
     credit_used = _subtract(credit_initial, credit_pool)
 
-    # Anything left in liability is cash payable
-    cash_payable = _round_tax(liability)
+    # Cash payable for "other than RCM" = whatever's left of liability
+    cash_payable_other = _round_tax(liability)
+    # Cash payable for RCM = the full RCM tax (no ITC offset allowed)
+    cash_payable_rcm = _round_tax(rcm_tax)
+    # Total cash = both combined
+    cash_payable = _round_tax({k: cash_payable_other[k] + cash_payable_rcm[k]
+                               for k in TAX_HEADS})
 
     total_output = round(sum(output.values()), 2)
     total_itc = round(sum(net_itc.values()) + sum(opening.values()), 2)
@@ -181,6 +186,8 @@ def compute_gstr3b(inputs: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "output_tax": output,
+        "rcm_tax_payable": rcm_tax,
+        "output_tax_other": output_other,
         "itc_available": itc_avail,
         "itc_reversal": itc_rev,
         "net_itc": net_itc,
@@ -189,7 +196,9 @@ def compute_gstr3b(inputs: Dict[str, Any]) -> Dict[str, Any]:
         "setoff_steps": setoff_steps,
         "credit_used": credit_used,
         "cash_payable": cash_payable,
-        "closing_balance": _round_tax(credit_pool),  # what's left after set-off
+        "cash_payable_other": cash_payable_other,
+        "cash_payable_rcm": cash_payable_rcm,
+        "closing_balance": _round_tax(credit_pool),
         "total_output": total_output,
         "total_itc": total_itc,
         "total_cash_payable": total_cash,
