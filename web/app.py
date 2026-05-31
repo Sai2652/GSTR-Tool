@@ -1123,18 +1123,30 @@ def api_generate():
             for d in preview.get("_invoices") or []:
                 if _doc_key_str(d) not in excluded_keys:
                     continue
-                ex_list.append({
+                # Build a JSON-safe deep copy of the full doc so it can be
+                # re-injected as-is when carried forward to the next month.
+                doc_copy = {
                     "key": _doc_key_str(d),
                     "doc_type": d.get("doc_type", "INV"),
                     "invoice_no": d.get("invoice_no", ""),
                     "invoice_date": d["invoice_date"].strftime("%d-%m-%Y") if d.get("invoice_date") else "",
                     "gstin": d.get("gstin", ""),
                     "customer_name": d.get("customer_name", ""),
+                    "is_b2b": bool(d.get("is_b2b")),
+                    "is_interstate": bool(d.get("is_interstate")),
+                    "place_of_supply": d.get("place_of_supply", ""),
+                    "reverse_charge": d.get("reverse_charge", "N"),
+                    "supply_type": d.get("supply_type", "REGULAR"),
+                    "orig_invoice_no": d.get("orig_invoice_no", ""),
+                    "orig_invoice_date": d["orig_invoice_date"].strftime("%d-%m-%Y") if d.get("orig_invoice_date") else "",
+                    "items": [dict(it) for it in (d.get("items") or [])],
+                    "invoice_total_taxable": float(d.get("invoice_total_taxable", 0) or 0),
+                    "invoice_total_tax": float(d.get("invoice_total_tax", 0) or 0),
+                    "invoice_value": float(d.get("invoice_value", 0) or 0),
                     "taxable_value": float(d.get("invoice_total_taxable", 0) or 0),
                     "total_tax": float(d.get("invoice_total_tax", 0) or 0),
-                    "invoice_value": float(d.get("invoice_value", 0) or 0),
-                    "supply_type": d.get("supply_type", "REGULAR"),
-                })
+                }
+                ex_list.append(doc_copy)
             full = projects.get_project(proj["id"]) or {}
             meta = full.get("meta") or {}
             meta["excluded_invoices"] = ex_list
