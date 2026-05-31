@@ -522,6 +522,7 @@
           gstr2b: state.gstr2bRaw,
           supplies_3_1: state.supplies_3_1 || null,
           inter_state_3_2: state.inter_state_3_2 || null,
+          reversal_buckets: state.lastReversalBuckets || null,
         }),
       });
       if (!res.ok) {
