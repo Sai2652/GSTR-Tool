@@ -633,6 +633,19 @@ function toggleExclusion(firmId, docKey, exclude) {
   else currentExclusions[firmId].delete(docKey);
 }
 
+function setOverride(firmId, docKey, patch) {
+  if (!currentOverrides[firmId]) currentOverrides[firmId] = {};
+  currentOverrides[firmId][docKey] = Object.assign(
+    currentOverrides[firmId][docKey] || {}, patch);
+  // Update review-hint with count
+  const cnt = Object.values(currentOverrides)
+    .reduce((n, m) => n + Object.keys(m).length, 0);
+  const hint = document.getElementById('review-hint');
+  if (hint && cnt > 0) {
+    hint.textContent = `${cnt} invoice${cnt !== 1 ? 's' : ''} customised`;
+  }
+}
+
 function updateReviewSummary() {
   const hint = document.getElementById('review-hint');
   let totalExcluded = 0;
