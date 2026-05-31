@@ -169,7 +169,20 @@
                     <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;margin-left:6px;">GSTR-3B FILED</span>
                   {% endif %}
                 </div>
-                <div class="period-meta">{{ proj.files|length }} file{{ 's' if proj.files|length != 1 else '' }}</div>
+                <div class="period-meta">
+                  <a href="{{ url_for('gstr1_page') }}?firm={{ f.gstin }}&period={{ proj.period }}"
+                     style="display:inline-block;padding:4px 10px;margin-left:6px;background:#0B1638;color:#fff;border-radius:4px;font-size:11px;text-decoration:none;font-weight:600;">Edit GSTR-1</a>
+                  <a href="{{ url_for('gstr3b_page') }}?firm={{ f.gstin }}&period={{ proj.period }}"
+                     style="display:inline-block;padding:4px 10px;margin-left:4px;background:#6958C2;color:#fff;border-radius:4px;font-size:11px;text-decoration:none;font-weight:600;">Edit GSTR-3B</a>
+                  {% if filings.get('gstr1', {}).get('filed') or filings.get('gstr3b', {}).get('filed') %}
+                    <button type="button" class="files-unlock-btn"
+                      data-project-id="{{ proj.id }}"
+                      data-g1-filed="{{ '1' if filings.get('gstr1', {}).get('filed') else '' }}"
+                      data-g3-filed="{{ '1' if filings.get('gstr3b', {}).get('filed') else '' }}"
+                      style="margin-left:4px;padding:4px 10px;background:#fff;color:#92400e;border:1px solid #fcd34d;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;">🔓 Unlock</button>
+                  {% endif %}
+                  <span style="margin-left:8px;color:#6B6357;font-size:11.5px;">{{ proj.files|length }} file{{ 's' if proj.files|length != 1 else '' }}</span>
+                </div>
               </div>
 
               {% if proj.files %}
