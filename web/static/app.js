@@ -331,7 +331,7 @@ function renderReview(data) {
               <td class="num" data-totals="taxable">0.00</td>
               <td class="num" data-totals="tax">0.00</td>
               <td class="num" data-totals="value"><b>0.00</b></td>
-              <td colspan="2" class="totals-count">
+              <td colspan="4" class="totals-count">
                 <span data-totals="included-count">0</span> included ·
                 <span data-totals="excluded-count">0</span> excluded
               </td>
