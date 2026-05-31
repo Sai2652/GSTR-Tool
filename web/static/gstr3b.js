@@ -68,9 +68,99 @@
       enableStep(2);
       // Auto-pull GSTR-1 output liability if available
       pullGstr1();
+      // Check whether this period is already filed
+      checkProjectStatus();
     } else {
       [2, 3, 4, 5, 6].forEach(disableStep);
     }
+  }
+
+  async function checkProjectStatus() {
+    try {
+      const url = '/api/projects/status?firm=' + encodeURIComponent(state.firmId)
+                + '&period=' + encodeURIComponent(state.period);
+      const res = await fetch(url);
+      const json = await res.json();
+      if (!json.ok || !json.found) {
+        state.projectId = null;
+        state.filed3b = false;
+        updateFilingUI();
+        return;
+      }
+      state.projectId = json.project_id;
+      const f3 = (json.filings || {}).gstr3b || {};
+      state.filed3b = !!f3.filed;
+      state.filedAt3b = f3.filed_at || '';
+      state.arn3b = f3.arn || '';
+      updateFilingUI();
+    } catch (err) {
+      console.warn('project status check failed', err);
+    }
+  }
+
+  function updateFilingUI() {
+    const status = $('filing-status');
+    const markBtn = $('mark-filed-btn');
+    const unlockBtn = $('unlock-btn');
+    if (!status) return;
+    if (state.filed3b) {
+      const when = state.filedAt3b
+        ? new Date(state.filedAt3b).toLocaleString('en-IN') : '';
+      status.innerHTML = '<span style="color:#15803d;font-weight:600;">🔒 Filed</span>'
+        + (when ? ' on ' + when : '')
+        + (state.arn3b ? ' · ARN: <code>' + state.arn3b + '</code>' : '')
+        + ' &nbsp; <span style="color:#666;">(read-only — click Unlock to edit)</span>';
+      if (markBtn) markBtn.style.display = 'none';
+      if (unlockBtn) unlockBtn.style.display = '';
+      // Disable inputs steps 3-6 so user can't accidentally edit
+      [3, 4, 5, 6].forEach(n => $('step-' + n).classList.add('disabled'));
+    } else {
+      status.innerHTML = '';
+      if (markBtn) markBtn.style.display = state.computation ? '' : 'none';
+      if (unlockBtn) unlockBtn.style.display = 'none';
+    }
+  }
+
+  // Wire filing buttons (once)
+  const markBtn = $('mark-filed-btn');
+  if (markBtn) {
+    markBtn.addEventListener('click', async () => {
+      if (!state.projectId) {
+        alert('Generate and download the GSTR-3B first — that saves it to the archive.');
+        return;
+      }
+      const arn = prompt('Enter ARN (optional) — leave blank if not yet filed on portal:', '');
+      try {
+        const res = await fetch('/api/projects/' + state.projectId + '/mark-filed', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({return_type: 'gstr3b', arn: arn || ''}),
+        });
+        const j = await res.json();
+        if (!j.ok) { alert('Mark filed failed: ' + j.error); return; }
+        state.filed3b = true;
+        state.filedAt3b = new Date().toISOString();
+        state.arn3b = arn || '';
+        updateFilingUI();
+      } catch (err) { alert('Network error: ' + err.message); }
+    });
+  }
+  const unlockBtn = $('unlock-btn');
+  if (unlockBtn) {
+    unlockBtn.addEventListener('click', async () => {
+      if (!confirm('Unlock this filed return for editing? The filed status will be cleared.')) return;
+      try {
+        const res = await fetch('/api/projects/' + state.projectId + '/unlock', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({return_type: 'gstr3b'}),
+        });
+        const j = await res.json();
+        if (!j.ok) { alert('Unlock failed: ' + j.error); return; }
+        state.filed3b = false;
+        updateFilingUI();
+        // Re-enable steps
+        [3, 4, 5, 6].forEach(n => $('step-' + n).classList.remove('disabled'));
+      } catch (err) { alert('Network error: ' + err.message); }
+    });
   }
 
   // initial — period prefilled from server
