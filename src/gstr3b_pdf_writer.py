@@ -595,18 +595,36 @@ def _build_breakup(comp: Dict, period_label: str, st) -> List:
 
 def _build_verification(firm: Dict, st) -> List:
     legal = firm.get("legal_name") or firm.get("name") or ""
-    txt = (
-        "<b>Verification</b><br/>"
+    designation = firm.get("designation") or "PROPRIETOR"
+    body = (
+        "<b>Verification:</b><br/>"
         "I hereby solemnly affirm and declare that the information given herein above "
-        "is true and correct to the best of my knowledge and belief and nothing has been "
-        "concealed therefrom.<br/><br/>"
-        f"Name of Authorized Signatory: <b>{legal}</b><br/>"
-        "Designation / Status: <b>Proprietor / Authorized Signatory</b><br/>"
-        "Date: ____________________   Place: ____________________"
+        "is true and correct to the best of my knowledge and belief and nothing has "
+        "been concealed there from."
     )
+    sig_block = (
+        "<b>Name of Authorized Signatory</b><br/>"
+        f"{legal}<br/><br/>"
+        "<b>Designation /Status</b><br/>"
+        f"{designation}"
+    )
+    # Two-column layout: Date on left, Signatory block on right
+    sig_tbl = Table(
+        [[Paragraph("Date: ____________", st["small"]),
+          Paragraph(sig_block, st["small"])]],
+        colWidths=[90 * mm, 90 * mm],
+    )
+    sig_tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN",  (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
     return [
         Spacer(1, 8),
-        Paragraph(txt, st["small"]),
+        Paragraph(body, st["small"]),
+        Spacer(1, 6),
+        sig_tbl,
     ]
 
 
