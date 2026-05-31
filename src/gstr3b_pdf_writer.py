@@ -514,10 +514,10 @@ def _build_table_6_1(comp: Dict, st,
         ]
 
     sec_b_rows = [
-        rcm_row("Integrated tax", rcm_tax["igst"]),
-        rcm_row("Central tax",    rcm_tax["cgst"]),
-        rcm_row("State/UT tax",   rcm_tax["sgst"]),
-        rcm_row("Cess",           rcm_tax["cess"]),
+        rcm_row("Integrated tax", rcm_cash.get("igst", rcm_tax.get("igst", 0))),
+        rcm_row("Central tax",    rcm_cash.get("cgst", rcm_tax.get("cgst", 0))),
+        rcm_row("State/UT tax",   rcm_cash.get("sgst", rcm_tax.get("sgst", 0))),
+        rcm_row("Cess",           rcm_cash.get("cess", rcm_tax.get("cess", 0))),
     ]
 
     headers = [
