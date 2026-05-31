@@ -561,13 +561,13 @@ def _build_table_6_1(comp: Dict, st,
         ("SPAN", (10, 0), (10, 1)), # Late fee
         # Body rows
         ("FONT", (0, 2), (-1, -1), "Helvetica", 8.5),
-        ("BOX", (0, 0), (-1, -1), 0.6, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
         ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
         ("VALIGN", (0, 2), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING",   (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 3),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING",   (0, 0), (-1, -1), 4.5),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 4.5),
     ]
     # Right-align numeric body columns
     for c in money_cols:
