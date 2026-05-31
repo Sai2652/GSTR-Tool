@@ -346,19 +346,19 @@ def _build_table_4(table4: Dict, st) -> List:
         ]
 
     rows = [
-        row("(A) ITC Available (whether in full or part)", None, bold=True),
+        row("A. ITC Available (whether in full or part)", None, bold=True, section_header=True),
         row("    (1) Import of goods", "4A1_import_goods"),
         row("    (2) Import of services", "4A2_import_services"),
         row("    (3) Inward supplies liable to reverse charge (other than 1 & 2 above)",
             "4A3_reverse_charge"),
         row("    (4) Inward supplies from ISD", "4A4_isd"),
         row("    (5) All other ITC", "4A5_all_other_itc"),
-        row("(B) ITC Reversed", None, bold=True),
+        row("B. ITC Reversed", None, bold=True, section_header=True),
         row("    (1) As per rules 38, 42 & 43 of CGST Rules and section 17(5)",
             "4B1_rules_38_42_43_17_5"),
         row("    (2) Others", "4B2_others"),
-        row("(C) Net ITC Available (A - B)", "4C_net_itc", bold=True),
-        row("(D) Other Details", None, bold=True),
+        row("C. Net ITC available (A-B)", "4C_net_itc", bold=True),
+        row("(D) Other Details", None, bold=True, section_header=True),
         row("    (1) ITC reclaimed which was reversed under Table 4(B)(2) in earlier tax period",
             "4D1_reclaimed"),
         row("    (2) Ineligible ITC under section 16(4) & ITC restricted due to PoS rules",
