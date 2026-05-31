@@ -1180,6 +1180,65 @@ def api_generate():
     })
 
 
+@app.route("/api/carry_forward/apply", methods=["POST"])
+@login_required
+def api_carry_forward_apply():
+    """
+    Inject selected carried-forward invoices into the current batch's
+    cached preview for a firm. After this, the next /api/generate call
+    will include them in the GSTR-1.
+    """
+    data = request.get_json(silent=True) or {}
+    batch_id = data.get("batch_id", "")
+    firm_id = data.get("firm_id", "")
+    items = data.get("items", []) or []
+
+    state = batch_cache.get(batch_id)
+    if not state:
+        return jsonify({"ok": False, "error": "Batch expired"}), 400
+    target = None
+    for p in state["previews"]:
+        if p.get("ok") and p.get("firm_id") == firm_id:
+            target = p
+            break
+    if not target:
+        return jsonify({"ok": False, "error": "Firm not in batch"}), 404
+
+    from datetime import datetime as _dt
+    added = 0
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        doc = dict(raw)
+        # Convert date strings back to date objects (consolidator/json_builder
+        # both call .strftime — need a date-like object).
+        for fld in ("invoice_date", "orig_invoice_date"):
+            v = doc.get(fld)
+            if isinstance(v, str) and v:
+                try:
+                    doc[fld] = _dt.strptime(v, "%d-%m-%Y").date()
+                except ValueError:
+                    doc[fld] = None
+            elif not v:
+                doc[fld] = None
+        # Avoid duplicates — skip if same key already in invoices
+        existing_keys = {_doc_key_str(d) for d in target["_invoices"]}
+        if _doc_key_str(doc) in existing_keys:
+            continue
+        target["_invoices"].append(doc)
+        # Refresh the UI-safe preview list
+        target["invoices_preview"] = [_serialize_invoice_for_ui(d) for d in target["_invoices"]]
+        added += 1
+    # Update stats
+    target["stats"]["invoices"] = len(target["_invoices"])
+    batch_cache.set(batch_id, state)
+    return jsonify({
+        "ok": True, "added": added,
+        "invoices": target["invoices_preview"],
+        "stats": target["stats"],
+    })
+
+
 @app.route("/api/edit_invoice", methods=["POST"])
 def api_edit_invoice():
     """
