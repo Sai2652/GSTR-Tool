@@ -553,6 +553,60 @@ def api_project_mark_filed(project_id):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/projects/save-state", methods=["POST"])
+@login_required
+def api_projects_save_state():
+    """
+    Persist editorial state for a (firm, period) project into projects.meta.
+    Body:
+      { firm: <id or gstin>, period: 'MMYYYY', kind: 'gstr3b'|'gstr1', state: {...} }
+    """
+    payload = request.get_json(silent=True) or {}
+    firm_id = (payload.get("firm") or "").strip()
+    period = (payload.get("period") or "").strip()
+    kind = (payload.get("kind") or "").strip().lower()
+    state = payload.get("state") or {}
+    if not firm_id or not period or kind not in ("gstr1", "gstr3b"):
+        return jsonify({"ok": False, "error": "firm, period, kind required"}), 400
+    try:
+        firm = firms.get(firm_id)
+        if not firm:
+            return jsonify({"ok": False, "error": "Firm not found"}), 404
+        proj = projects.get_or_create(
+            firm_uuid=firm["id"], period=period, period_label=period_to_label(period))
+        full = projects.get_project(proj["id"]) or {}
+        meta = full.get("meta") or {}
+        meta.setdefault("state", {})
+        meta["state"][kind] = state
+        projects._client.table("projects").update({"meta": meta}).eq("id", proj["id"]).execute()
+        return jsonify({"ok": True, "project_id": proj["id"]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/projects/load-state")
+@login_required
+def api_projects_load_state():
+    """Return saved editorial state for (firm, period, kind)."""
+    firm_id = (request.args.get("firm") or "").strip()
+    period = (request.args.get("period") or "").strip()
+    kind = (request.args.get("kind") or "").strip().lower()
+    if not firm_id or not period or kind not in ("gstr1", "gstr3b"):
+        return jsonify({"ok": False, "error": "firm, period, kind required"}), 400
+    try:
+        firm = firms.get(firm_id)
+        if not firm:
+            return jsonify({"ok": True, "found": False})
+        proj = projects.find_project(firm["id"], period)
+        if not proj:
+            return jsonify({"ok": True, "found": False})
+        meta = proj.get("meta") or {}
+        st = (meta.get("state") or {}).get(kind)
+        return jsonify({"ok": True, "found": bool(st), "state": st or {}})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/projects/<project_id>/unlock", methods=["POST"])
 @login_required
 def api_project_unlock(project_id):
