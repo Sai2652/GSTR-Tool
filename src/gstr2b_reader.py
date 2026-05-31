@@ -317,8 +317,15 @@ def _extract_invoice_details(wb) -> List[Dict[str, Any]]:
         header_row = _find_header_row(ws)
         if header_row is None:
             continue
-        col_map = {field: _find_col(ws, header_row, kws) for field, kws in _HDR.items()}
-        for r in range(header_row + 1, ws.max_row + 1):
+        # GSTR-2B detail sheets have merged multi-row headers. Build a column
+        # map by concatenating up to 3 header rows so "Integrated Tax (₹)"
+        # split across rows still matches.
+        col_map = {field: _find_col_band(ws, header_row, kws)
+                   for field, kws in _HDR.items()}
+        # Find the actual first data row (skip blank/unit/sub-header rows just
+        # below the title row).
+        data_start = _find_data_start(ws, header_row, col_map)
+        for r in range(data_start, ws.max_row + 1):
             # Skip blank rows — require at least supplier GSTIN or invoice number
             sup = ws.cell(r, col_map["supplier_gstin"]).value if col_map["supplier_gstin"] else None
             inum = ws.cell(r, col_map["invoice_no"]).value if col_map["invoice_no"] else None
