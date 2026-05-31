@@ -1043,6 +1043,9 @@ def api_generate():
     data = request.get_json(force=True, silent=True) or {}
     batch_id = data.get("batch_id", "")
     exclusions = data.get("exclusions", {}) or {}
+    # Per-firm supply-type and reverse-charge overrides keyed by doc_key.
+    # Format: { firm_id: { doc_key: {"supply_type": "SEZ_WOPAY", "reverse_charge": "Y"} } }
+    overrides = data.get("overrides", {}) or {}
 
     state = batch_cache.get(batch_id)
     if not state:
@@ -1061,6 +1064,17 @@ def api_generate():
         try:
             firm_id = preview["firm_id"]
             excluded_keys = set(exclusions.get(firm_id, []))
+            # Apply supply_type / reverse_charge overrides to the cached invoices
+            firm_overrides = overrides.get(firm_id) or {}
+            if firm_overrides:
+                for inv in preview.get("_invoices") or []:
+                    o = firm_overrides.get(_doc_key_str(inv))
+                    if not o:
+                        continue
+                    if "supply_type" in o:
+                        inv["supply_type"] = (o["supply_type"] or "REGULAR").upper()
+                    if "reverse_charge" in o:
+                        inv["reverse_charge"] = (o["reverse_charge"] or "N").upper()
             r = _generate_one(preview, period, batch_dir, excluded_keys)
             results.append(r)
         except Exception as e:
