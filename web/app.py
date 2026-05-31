@@ -498,6 +498,96 @@ def api_gstr3b_download():
     )
 
 
+@app.route("/api/projects/status")
+@login_required
+def api_project_status():
+    """Get the project (filing status + files) for a firm + period."""
+    firm_id = (request.args.get("firm") or "").strip()
+    period = (request.args.get("period") or "").strip()
+    if not firm_id or not period:
+        return jsonify({"ok": False, "error": "firm and period required"}), 400
+    try:
+        firm = firms.get(firm_id)
+        firm_uuid = firm["id"] if firm else None
+        if not firm_uuid:
+            return jsonify({"ok": True, "found": False})
+        proj = projects.find_project(firm_uuid, period)
+        if not proj:
+            return jsonify({"ok": True, "found": False})
+        files = projects.list_files(proj["id"])
+        meta = proj.get("meta") or {}
+        filings = meta.get("filings") or {}
+        return jsonify({
+            "ok": True,
+            "found": True,
+            "project_id": proj["id"],
+            "period": proj["period"],
+            "period_label": proj.get("period_label"),
+            "filings": filings,
+            "files": [{
+                "id": f["id"], "kind": f["kind"], "filename": f["filename"],
+                "size_bytes": f.get("size_bytes"),
+            } for f in files],
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/projects/<project_id>/mark-filed", methods=["POST"])
+@login_required
+def api_project_mark_filed(project_id):
+    payload = request.get_json(silent=True) or {}
+    return_type = (payload.get("return_type") or "").strip().lower()
+    arn = (payload.get("arn") or "").strip()
+    if return_type not in ("gstr1", "gstr3b"):
+        return jsonify({"ok": False, "error": "return_type must be gstr1 or gstr3b"}), 400
+    try:
+        proj = projects.mark_filed(project_id, return_type, arn=arn or None)
+        return jsonify({"ok": True, "project": proj})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/projects/<project_id>/unlock", methods=["POST"])
+@login_required
+def api_project_unlock(project_id):
+    payload = request.get_json(silent=True) or {}
+    return_type = (payload.get("return_type") or "").strip().lower()
+    if return_type not in ("gstr1", "gstr3b"):
+        return jsonify({"ok": False, "error": "return_type must be gstr1 or gstr3b"}), 400
+    try:
+        proj = projects.mark_unfiled(project_id, return_type)
+        return jsonify({"ok": True, "project": proj})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/projects/file/<file_id>/download")
+@login_required
+def api_project_file_download(file_id):
+    """Return a signed URL or stream a project file by id."""
+    try:
+        rec = projects.get_file_by_id(file_id)
+        if not rec:
+            return jsonify({"ok": False, "error": "File not found"}), 404
+        data = projects.download_file(rec["storage_path"])
+        from flask import Response
+        return Response(
+            data, mimetype=_guess_mime_simple(rec["filename"]),
+            headers={"Content-Disposition": f'attachment; filename="{rec["filename"]}"'},
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _guess_mime_simple(filename: str) -> str:
+    n = filename.lower()
+    if n.endswith(".json"): return "application/json"
+    if n.endswith(".xlsx"): return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if n.endswith(".pdf"):  return "application/pdf"
+    return "application/octet-stream"
+
+
 @app.route("/api/gstr3b/download-pdf", methods=["POST"])
 @login_required
 def api_gstr3b_download_pdf():
