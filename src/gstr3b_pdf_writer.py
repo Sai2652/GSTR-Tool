@@ -529,9 +529,11 @@ def _build_table_6_1(comp: Dict, st,
         "Tax paid\nin cash", "Interest\npaid in cash", "Late fee\npaid in cash"
     ]
     header_row2 = ["", "", "", "", "IGST", "CGST", "SGST", "Cess", "", "", ""]
-    widths = [22 * mm, 14 * mm, 18 * mm, 14 * mm,
-              12 * mm, 12 * mm, 12 * mm, 11 * mm,
-              16 * mm, 16 * mm, 16 * mm]
+    # Wider money columns so "74,408.22" doesn't crowd against borders.
+    # Sum = 22+18+21+18 + (13*4=52) + 17+17+17 = 182mm (fits A4 portrait 186mm content).
+    widths = [22 * mm, 18 * mm, 21 * mm, 18 * mm,
+              13 * mm, 13 * mm, 13 * mm, 13 * mm,
+              17 * mm, 17 * mm, 17 * mm]
 
     money_cols = set(range(1, len(header_row1)))
 
