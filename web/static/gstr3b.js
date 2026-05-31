@@ -582,6 +582,8 @@
       }
       state.computation = json.result;
       renderResult();
+      // Reveal Mark-as-Filed / Unlock buttons appropriately
+      if (typeof updateFilingUI === 'function') updateFilingUI();
     } catch (err) {
       alert('Network error: ' + err.message);
     } finally {
