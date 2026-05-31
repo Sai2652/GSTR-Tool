@@ -334,9 +334,19 @@ def _extract_invoice_details(wb) -> List[Dict[str, Any]]:
             if not sup and not inum:
                 continue
             seq += 1
+            # GSTR-2B keeps RCM invoices inside the B2B sheet flagged with
+            # 'Supply Attract Reverse Charge' = 'Yes'. Re-categorize those to
+            # the reverse_charge bucket so they populate Table 3.1(d) and 4(A)(3).
+            row_category = category
+            rcm_flag = ws.cell(r, col_map["reverse_charge"]).value if col_map["reverse_charge"] else None
+            rcm_str = str(rcm_flag or "").strip().upper()
+            if rcm_str in ("YES", "Y", "TRUE"):
+                if row_category in ("all_other_itc",):
+                    row_category = "reverse_charge"
+
             inv = {
                 "id": f"{key}-{seq}",
-                "category": category,
+                "category": row_category,
                 "source_sheet": key,
                 "supplier_gstin":   _cell_str(ws, r, col_map["supplier_gstin"]),
                 "supplier_name":    _cell_str(ws, r, col_map["supplier_name"]),
